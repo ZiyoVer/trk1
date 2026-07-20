@@ -51,6 +51,20 @@ class CaptureGateTests(unittest.TestCase):
     def test_open_when_idle(self) -> None:
         self.assertFalse(self.gate.should_drop())
 
+    def test_stuck_player_cannot_deafen_the_microphone_forever(self) -> None:
+        # v0.7.4 regressiyasi: player "audio bor" holatida qotib qolsa
+        # mikrofon butun sessiya davomida yopiq qolardi.
+        self.player.audio = True
+        self.assertTrue(self.gate.should_drop())
+        self.clock.now += CaptureGate.MAX_BLOCK_SECONDS + 0.1
+        self.assertFalse(self.gate.should_drop(), "gate majburan ochilishi kerak")
+
+    def test_normal_playback_still_gates_within_limit(self) -> None:
+        self.player.audio = True
+        self.gate.should_drop()
+        self.clock.now += CaptureGate.MAX_BLOCK_SECONDS / 2
+        self.assertTrue(self.gate.should_drop())
+
 
 if __name__ == "__main__":
     unittest.main()

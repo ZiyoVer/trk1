@@ -124,19 +124,34 @@ class CaptureGate:
     """
 
     TAIL_SECONDS = 0.4
+    # Xavfsizlik chegarasi: player "audio bor" holatida qotib qolsa mikrofon
+    # abadiy o'chib qolmasin. 25s — uzun tabiiy nutq ijrosidan uzunroq
+    # (duplex himoyasi buzilmaydi), lekin qotgan holatdan chiqaradi.
+    MAX_BLOCK_SECONDS = 25.0
 
     def __init__(self, source_player_ref, clock=time.monotonic):  # noqa: ANN001
         self._source_player_ref = source_player_ref
         self._clock = clock
         self._blocked_until = 0.0
+        self._blocking_since = 0.0
 
     def should_drop(self) -> bool:
         player = self._source_player_ref()
         now = self._clock()
-        if player is not None and player.has_audio():
+        playing = player is not None and player.has_audio()
+        if not playing and now >= self._blocked_until:
+            self._blocking_since = 0.0
+            return False
+        if self._blocking_since == 0.0:
+            self._blocking_since = now
+        elif now - self._blocking_since > self.MAX_BLOCK_SECONDS:
+            # Qotib qolgan holat — gate'ni majburan ochamiz.
+            self._blocking_since = 0.0
+            self._blocked_until = 0.0
+            return False
+        if playing:
             self._blocked_until = now + self.TAIL_SECONDS
-            return True
-        return now < self._blocked_until
+        return True
 
 
 class Translator:
@@ -180,10 +195,12 @@ class Translator:
         self.capture_gate: CaptureGate | None = None
         self.gated_chunks = 0
         self._last_gate_log = 0.0
-        if self.monitor_player is not None:
-            # Nazorat ovozi karnaydan chiqsa, o'z mikrofonimiz uni eshitib
-            # qayta tarjimaga yuborardi — o'z-o'zini gate qiladi.
-            self.capture_gate = CaptureGate(lambda: self.monitor_player)
+        # DIQQAT: nazorat ovozi uchun o'z-o'zini gate qilish MUMKIN EMAS.
+        # Bir kanalning o'zi ijro qilayotganda mikrofonini yopsa, gapirish
+        # imkoni butunlay yo'qoladi (v0.7.4 regressiyasi: 1600+ chunk
+        # tashlandi, tarjima umuman ishlamadi). Bu yerda halqa xavfi ham
+        # yo'q: chiqish tili = target, echo_target_language=False bo'lgani
+        # uchun model o'z tilidagi nutqqa javob bermaydi.
 
     def _log(self, message: str) -> None:
         prefix = f"[{self.channel}] " if self.channel else ""
