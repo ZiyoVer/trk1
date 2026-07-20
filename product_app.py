@@ -13,6 +13,7 @@ import threading
 import urllib.request
 import uuid
 import zipfile
+from datetime import datetime
 from pathlib import Path
 
 
@@ -856,6 +857,8 @@ class TranslatorWindow(QWidget):
         self.tray_monitor_action.setCheckable(True)
         self.tray_monitor_action.setChecked(self.monitor_enabled)
         self.tray_monitor_action.toggled.connect(self._toggle_monitor)
+        logs_action = menu.addAction("Loglarni yig‘ish (ZIP)")
+        logs_action.triggered.connect(self.export_logs)
         menu.addSeparator()
         show_action = menu.addAction("Oynani ko‘rsatish")
         show_action.triggered.connect(self._show_window)
@@ -900,6 +903,50 @@ class TranslatorWindow(QWidget):
                 QSystemTrayIcon.MessageIcon.Information,
                 4000,
             )
+
+    def export_logs(self) -> None:
+        """Barcha loglarni bitta ZIP qilib Desktop'ga chiqaradi.
+
+        Foydalanuvchi shu faylni yuborsa, muammoni taxmin qilmasdan
+        aniqlash mumkin: ilova jurnali + dvigatel jurnali + qurilmalar.
+        """
+        try:
+            stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+            desktop = Path.home() / "Desktop"
+            target = (desktop if desktop.is_dir() else Path.home()) / (
+                f"LiveTranslator-loglar-{stamp}.zip"
+            )
+            directory = log_directory()
+            with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as archive:
+                for name in ("app.log", "engine.log", "engine.prev.log"):
+                    source = directory / name
+                    if source.is_file():
+                        archive.write(source, name)
+                summary = [
+                    f"{APP_NAME} {APP_VERSION}",
+                    f"OS: {platform.system()} {platform.release()} ({platform.machine()})",
+                    f"Rejim: {self._current_mode()}",
+                    f"API key kiritilgan: {'ha' if self.api_key else 'yo‘q'}",
+                    f"Control URL: {self.control_url or '(yo‘q)'}",
+                    f"Input: {self._device_name(self.input_device)}",
+                    f"Output: {self._device_name(self.output_device)}",
+                    f"Nazorat ovozi: {'yoqiq' if self.monitor_enabled else 'o‘chiq'}",
+                    f"Oxirgi xato: {self.last_engine_error or '(yo‘q)'}",
+                ]
+                archive.writestr("holat.txt", "\n".join(summary))
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(target.parent)))
+            self._set_status("LOGLAR SAQLANDI", "#22c55e")
+            self.route_hint.setText(f"Loglar: {target.name} (Desktop’da)")
+            if self.tray is not None:
+                self.tray.showMessage(
+                    APP_NAME,
+                    f"Loglar Desktop’ga saqlandi: {target.name}",
+                    QSystemTrayIcon.MessageIcon.Information,
+                    5000,
+                )
+        except Exception as error:
+            self._set_status("LOGLARNI SAQLAB BO‘LMADI", "#ef4444")
+            self.route_hint.setText(str(error)[:180])
 
     def _toggle_monitor(self, enabled: bool) -> None:
         self.monitor_enabled = enabled
@@ -1802,7 +1849,16 @@ class TranslatorWindow(QWidget):
         environment.insert("GOOGLE_API_KEY", self.api_key)
         environment.insert("PYTHONUNBUFFERED", "1")
         self.engine_log_path.parent.mkdir(parents=True, exist_ok=True)
-        self.engine_log_path.unlink(missing_ok=True)
+        # Oldingi sessiya logini saqlab qolamiz: muammo yuz bergach
+        # foydalanuvchi ko'pincha ilovani qayta ishga tushiradi va
+        # dalil yo'qolib ketardi.
+        previous = self.engine_log_path.with_suffix(".prev.log")
+        if self.engine_log_path.is_file():
+            previous.unlink(missing_ok=True)
+            try:
+                self.engine_log_path.rename(previous)
+            except OSError:
+                self.engine_log_path.unlink(missing_ok=True)
         self.engine_log_position = 0
         environment.insert("LIVE_TRANSLATOR_ENGINE_LOG", str(self.engine_log_path))
         process.setProcessEnvironment(environment)
@@ -2219,7 +2275,74 @@ class TranslatorWindow(QWidget):
         QApplication.quit()
 
 
+def log_directory() -> Path:
+    if platform.system() == "Darwin":
+        return Path.home() / "Library" / "Logs" / APP_NAME
+    return Path(os.getenv("LOCALAPPDATA", str(Path.home()))) / APP_NAME
+
+
+def setup_app_logging() -> Path:
+    """GUI jarayonining hamma chiqishini faylga yozadi.
+
+    Windows'da windowed .exe'ning stdout/stderr'i yo'q — xato yuz bersa
+    hech qayerda iz qolmasdi. Endi app.log ichida diagnostika sarlavhasi,
+    barcha print'lar va ushlanmagan istisnolar (traceback) saqlanadi.
+    """
+    directory = log_directory()
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / "app.log"
+    try:
+        log_file = path.open("w", encoding="utf-8", buffering=1)
+    except OSError:
+        return path
+
+    class _Tee:
+        def __init__(self, stream, mirror) -> None:  # noqa: ANN001
+            self.stream = stream
+            self.mirror = mirror
+
+        def write(self, data: str) -> int:
+            self.mirror.write(data)
+            return self.stream.write(data) if self.stream else len(data)
+
+        def flush(self) -> None:
+            self.mirror.flush()
+            if self.stream:
+                self.stream.flush()
+
+    sys.stdout = log_file if sys.stdout is None else _Tee(sys.stdout, log_file)
+    sys.stderr = log_file if sys.stderr is None else _Tee(sys.stderr, log_file)
+
+    def log_uncaught(kind, value, trace) -> None:  # noqa: ANN001
+        import traceback
+
+        print("=== USHLANMAGAN XATO ===", file=sys.stderr)
+        traceback.print_exception(kind, value, trace, file=sys.stderr)
+
+    sys.excepthook = log_uncaught
+    print(f"=== {APP_NAME} {APP_VERSION} ===")
+    print(f"Vaqt      : {datetime.now().isoformat(timespec='seconds')}")
+    print(f"OS        : {platform.system()} {platform.release()} ({platform.machine()})")
+    print(f"Python    : {platform.python_version()} | frozen={getattr(sys, 'frozen', False)}")
+    print(f"Log papka : {directory}")
+    try:
+        import sounddevice as _sd
+
+        print("--- Audio qurilmalar ---")
+        for index, device in enumerate(_sd.query_devices()):
+            print(
+                f"  [{index}] {device['name']} "
+                f"(in={device['max_input_channels']}, out={device['max_output_channels']}, "
+                f"{int(device['default_samplerate'])} Hz)"
+            )
+    except Exception as error:
+        print(f"Audio qurilmalarni o‘qib bo‘lmadi: {error}")
+    print("--- Ilova jurnali ---", flush=True)
+    return path
+
+
 def run_gui() -> int:
+    setup_app_logging()
     # Toza mashinada (PyInstaller bundle) tizim CA'lari ko'rinmaydi —
     # dvigatel/websockets ham shu env orqali certifi'ni oladi.
     ensure_ca_bundle_env()
