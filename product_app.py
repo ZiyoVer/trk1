@@ -1840,6 +1840,11 @@ class TranslatorWindow(QWidget):
         self._set_controls(running=False)
         if is_expected_engine_exit(exit_code, stop_requested):
             self._set_status("TO‘XTADI", "#94a3b8")
+            # Oldingi muvaffaqiyatsiz urinishdan qolgan "TEXNIK HOLAT"
+            # kartasi normal to'xtashdan keyin turib qolmasin.
+            if self.source_language.text() == "TEXNIK HOLAT":
+                self.source_language.setText("Suhbatdoshingiz gapiradi")
+                self.source_text.setText("Gap kutilmoqda…")
             return
         detail = self.last_engine_error or self.process_error or "Dvijok kutilmaganda yopildi."
         self._set_status(self._friendly_engine_error(detail), "#ef4444")

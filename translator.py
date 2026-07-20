@@ -218,6 +218,11 @@ class Translator:
                     delay = min(delay * 2, 15.0)
         finally:
             self.capture.stop()
+            # To'xtashda qoldiq tarjimani oxirigacha ijro qilib o'tirmaymiz —
+            # duplex'da ikki player'ning to'liq drain'i 6s dan oshib, GUI
+            # majburan SIGKILL qilar edi ("Process crashed" ko'rinardi).
+            self.player.clear()
+            self._clear_audio_queue()
             self.player.stop()
             elapsed = max(time.monotonic() - self.started_at, 0.001)
             playback = self.player.metrics()
