@@ -366,6 +366,11 @@ class TranslatorWindow(QWidget):
             "OUTGOING": {"source": "", "target": ""},
         }
         self.settings = QSettings("Charon", APP_NAME)
+        # "Gapirish"da tarjima virtual kabelga ketadi; nazorat ovozi uni
+        # naushnikda ham eshittiradi (default: yoqiq).
+        self.monitor_enabled = (
+            str(self.settings.value("audio/monitor_outgoing", "true")).lower() != "false"
+        )
         self.mode_pairs = {
             mode.code: normalize_pair(
                 mode.code,
@@ -847,6 +852,11 @@ class TranslatorWindow(QWidget):
         self.tray_stop_action = menu.addAction("Tarjimani to‘xtatish")
         self.tray_stop_action.triggered.connect(self.stop_translator)
         menu.addSeparator()
+        self.tray_monitor_action = menu.addAction("Tarjimani o‘zim ham eshitay")
+        self.tray_monitor_action.setCheckable(True)
+        self.tray_monitor_action.setChecked(self.monitor_enabled)
+        self.tray_monitor_action.toggled.connect(self._toggle_monitor)
+        menu.addSeparator()
         show_action = menu.addAction("Oynani ko‘rsatish")
         show_action.triggered.connect(self._show_window)
         quit_action = menu.addAction("Chiqish")
@@ -889,6 +899,18 @@ class TranslatorWindow(QWidget):
                 "Oyna yashirildi — menyu panelidagi belgidan qaytariladi.",
                 QSystemTrayIcon.MessageIcon.Information,
                 4000,
+            )
+
+    def _toggle_monitor(self, enabled: bool) -> None:
+        self.monitor_enabled = enabled
+        self.settings.setValue("audio/monitor_outgoing", "true" if enabled else "false")
+        self.settings.sync()
+        if self.process is not None and self.tray is not None:
+            self.tray.showMessage(
+                APP_NAME,
+                "Keyingi ishga tushirishda qo‘llanadi.",
+                QSystemTrayIcon.MessageIcon.Information,
+                3000,
             )
 
     def _show_window(self) -> None:
@@ -1758,6 +1780,13 @@ class TranslatorWindow(QWidget):
                         str(output_id),
                     ]
                 )
+                if mode == "outgoing" and self.monitor_enabled:
+                    # Tarjima virtual kabelga ketadi — foydalanuvchi o'zi
+                    # eshitishi uchun fizik chiqishga nusxa beramiz
+                    # (mikrofon nazorat ijrosi paytida gate qilinadi).
+                    monitor = self._physical_output_name()
+                    if monitor:
+                        process_arguments.extend(["--monitor-device", monitor])
                 control_sessions = [
                     (mode, pair.source, pair.target, input_name, output_name)
                 ]
@@ -2064,6 +2093,20 @@ class TranslatorWindow(QWidget):
         # the remote gateway is temporarily unavailable; keep the UI alive and
         # surface a waiting state until a later connection succeeds.
         self.connection_timer.start(30_000)
+
+    def _physical_output_name(self) -> str:
+        """Nazorat ovozi uchun virtual bo'lmagan chiqish (naushnik afzal)."""
+        preferred = ("airpods", "headphone", "headset", "external", "usb")
+        devices = [
+            device
+            for device in available_devices("output")
+            if not is_virtual_device(device.name)
+        ]
+        for keyword in preferred:
+            for device in devices:
+                if keyword in device.name.casefold():
+                    return device.name
+        return devices[0].name if devices else ""
 
     def _heal_stale_system_audio(self) -> None:
         """Crash'dan keyin tizim mikrofoni virtual kabelda qolib ketishi mumkin.

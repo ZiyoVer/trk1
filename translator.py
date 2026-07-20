@@ -156,6 +156,20 @@ class Translator:
             output_rate=args.output_sample_rate,
             playback_profile=args.playback_profile,
         )
+        # "Nazorat" chiqishi: tarjima virtual kabelga ketganda foydalanuvchi
+        # o'zi hech narsa eshitmaydi va ishlayotganini bilolmaydi. Ixtiyoriy
+        # ikkinchi player o'sha ovozni naushnikka ham beradi.
+        self.monitor_player: AudioPlayer | None = None
+        monitor_query = getattr(args, "monitor_device", None)
+        if monitor_query:
+            monitor_device = auto_output_device(monitor_query)
+            self.monitor_player = AudioPlayer(
+                monitor_device,
+                speech_speed=args.speech_speed,
+                output_rate=None,
+                playback_profile=args.playback_profile,
+            )
+            self.monitor_device = monitor_device
         self.capture = AudioCapture(self.input_device, self._from_audio_thread)
         self.started_at = 0.0
         self.input_bytes = 0
@@ -166,6 +180,10 @@ class Translator:
         self.capture_gate: CaptureGate | None = None
         self.gated_chunks = 0
         self._last_gate_log = 0.0
+        if self.monitor_player is not None:
+            # Nazorat ovozi karnaydan chiqsa, o'z mikrofonimiz uni eshitib
+            # qayta tarjimaga yuborardi — o'z-o'zini gate qiladi.
+            self.capture_gate = CaptureGate(lambda: self.monitor_player)
 
     def _log(self, message: str) -> None:
         prefix = f"[{self.channel}] " if self.channel else ""
@@ -206,6 +224,9 @@ class Translator:
         )
 
         self.player.start()
+        if self.monitor_player is not None:
+            self.monitor_player.start()
+            self._log(f"Nazorat ovozi: {self.monitor_device.name}")
         self.capture.start()
         self.started_at = time.monotonic()
         delay = 1.0
@@ -225,6 +246,8 @@ class Translator:
                     )
                     self._log(f"{delay:.0f}s dan keyin qayta ulanadi...")
                     self.player.clear()
+                    if self.monitor_player is not None:
+                        self.monitor_player.clear()
                     self._clear_audio_queue()
                     try:
                         await asyncio.wait_for(self.stop_event.wait(), timeout=delay)
@@ -239,6 +262,9 @@ class Translator:
             self.player.clear()
             self._clear_audio_queue()
             self.player.stop()
+            if self.monitor_player is not None:
+                self.monitor_player.clear()
+                self.monitor_player.stop()
             elapsed = max(time.monotonic() - self.started_at, 0.001)
             playback = self.player.metrics()
             self._log(
@@ -296,6 +322,8 @@ class Translator:
                 continue
             if content.interrupted:
                 self.player.clear()
+                if self.monitor_player is not None:
+                    self.monitor_player.clear()
             if not self.args.no_transcript and content.input_transcription:
                 transcription = content.input_transcription
                 text = (transcription.text or "").strip()
@@ -313,8 +341,12 @@ class Translator:
                         data = part.inline_data.data
                         self.output_bytes += len(data)
                         self.player.play(data)
+                        if self.monitor_player is not None:
+                            self.monitor_player.play(data)
             if content.turn_complete:
                 self.player.flush()
+                if self.monitor_player is not None:
+                    self.monitor_player.flush()
 
     async def _send_google_audio(self, session) -> None:  # noqa: ANN001
         # Live Translate expects one continuous PCM stream. Artificial turn
@@ -387,6 +419,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--input-device", help="BlackHole input device name or ID")
     parser.add_argument("--output-device", help="Physical speaker/headphone name or ID")
+    parser.add_argument(
+        "--monitor-device",
+        help="Tarjimani virtual kabeldan tashqari shu qurilmada ham eshittirish",
+    )
     for channel in ("incoming", "outgoing"):
         parser.add_argument(f"--{channel}-input-device")
         parser.add_argument(f"--{channel}-output-device")
@@ -454,6 +490,9 @@ def duplex_channel_args(args: argparse.Namespace, channel: str) -> argparse.Name
     values = vars(args).copy()
     for field in ("input_device", "output_device", "source_language", "target_language"):
         values[field] = getattr(args, f"{channel}_{field}")
+    # Duplex'da nazorat ovozi kerak emas: kiruvchi kanal allaqachon fizik
+    # chiqishga o'ynaydi, ikkinchi nusxa faqat aks-sado yaratardi.
+    values["monitor_device"] = None
     return argparse.Namespace(**values)
 
 
