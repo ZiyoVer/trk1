@@ -7,32 +7,58 @@ import os
 import platform
 import socket
 import ssl
+import sys
 import urllib.error
 import urllib.parse
 import urllib.request
 from typing import Any
 
-import certifi
+try:
+    import certifi
+except ImportError:  # certifi ixtiyoriy — tizim CA'lari bilan ham ishlaymiz
+    certifi = None
+
+
+def ca_bundle_path() -> str:
+    """MAVJUD CA to'plami yo'li yoki bo'sh satr.
+
+    MUHIM: certifi.where() faqat yo'l qaytaradi, fayl borligini tekshirmaydi.
+    PyInstaller cacert.pem'ni avtomatik qo'shmaydi (certifi hook'i yo'q), shu
+    sabab bundle ichida bu yo'l mavjud bo'lmasligi mumkin. Mavjud bo'lmagan
+    yo'lni SSL_CERT_FILE'ga yozish OpenSSL'ni butunlay sindiradi — Windows'da
+    tizim sertifikatlari bilan ishlayotgan ulanish ham o'ladi.
+    """
+    for candidate in (
+        os.path.join(getattr(sys, "_MEIPASS", ""), "certifi", "cacert.pem")
+        if getattr(sys, "_MEIPASS", "")
+        else "",
+        certifi.where() if certifi is not None else "",
+    ):
+        if candidate and os.path.isfile(candidate):
+            return candidate
+    return ""
 
 
 def secure_ssl_context() -> ssl.SSLContext:
-    """PyInstaller bundle ichidagi Python macOS'ning tizim CA do'konini
-    ko'rmaydi — toza mashinada har qanday HTTPS 'CERTIFICATE_VERIFY_FAILED'
-    beradi. certifi'ning cacert.pem'i bilan kontekst quramiz."""
-    try:
-        return ssl.create_default_context(cafile=certifi.where())
-    except Exception:
-        return ssl.create_default_context()
+    """Bundle ichidagi Python macOS tizim CA do'konini ko'rmaydi — mavjud
+    bo'lsa certifi to'plamidan foydalanamiz, aks holda tizim standarti."""
+    bundle = ca_bundle_path()
+    if bundle:
+        try:
+            return ssl.create_default_context(cafile=bundle)
+        except Exception:
+            pass
+    return ssl.create_default_context()
 
 
 def ensure_ca_bundle_env() -> None:
-    """Butun jarayon (websockets/genai dvigateli ham) uchun CA yo'lini
-    e'lon qiladi; child jarayonlarga env orqali meros o'tadi."""
-    try:
-        os.environ.setdefault("SSL_CERT_FILE", certifi.where())
-        os.environ.setdefault("REQUESTS_CA_BUNDLE", certifi.where())
-    except Exception:
-        pass
+    """CA yo'lini butun jarayon (va child dvigatel) uchun e'lon qiladi —
+    FAQAT fayl haqiqatan mavjud bo'lsa."""
+    bundle = ca_bundle_path()
+    if not bundle:
+        return
+    os.environ.setdefault("SSL_CERT_FILE", bundle)
+    os.environ.setdefault("REQUESTS_CA_BUNDLE", bundle)
 
 
 class LicenseError(RuntimeError):

@@ -27,6 +27,7 @@ Set-Content -Encoding UTF8 $RuntimeHook "import os`nos.environ.setdefault(`"LIVE
     --specpath build\product `
     --collect-all google.genai `
     --collect-all sounddevice `
+    --collect-data certifi `
     --collect-submodules keyring.backends `
     --runtime-hook $RuntimeHook `
     product_app.py

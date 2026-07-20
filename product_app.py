@@ -1322,9 +1322,16 @@ class TranslatorWindow(QWidget):
                 setup = folder / ("VBCABLE_Setup_x64.exe" if sys.maxsize > 2**32 else "VBCABLE_Setup.exe")
                 import ctypes
 
+                # "-i -h": VB-Audio'ning jimgina o'rnatish rejimi — foydalanuvchi
+                # setup oynasida hech narsa bosmaydi, faqat bitta UAC so'raladi.
                 result = ctypes.windll.shell32.ShellExecuteW(
-                    None, "runas", str(setup), None, str(folder), 1
+                    None, "runas", str(setup), "-i -h", str(folder), 0
                 )
+                if result <= 32:
+                    # Jim rejim ishlamasa (eski pack), oddiy oynani ochamiz.
+                    result = ctypes.windll.shell32.ShellExecuteW(
+                        None, "runas", str(setup), None, str(folder), 1
+                    )
                 if result <= 32:
                     raise RuntimeError(f"VB-CABLE setup ochilmadi: {result}")
                 self.driver_signals.ready.emit("")

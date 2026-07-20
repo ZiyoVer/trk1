@@ -26,6 +26,7 @@ arch -arm64 .venv/bin/python -m PyInstaller \
   --specpath build/product \
   --collect-all google.genai \
   --collect-all sounddevice \
+  --collect-data certifi \
   --collect-submodules keyring.backends \
   product_app.py
 
