@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import platform
 import plistlib
@@ -446,7 +447,7 @@ class TranslatorWindow(QWidget):
         self.engine_log_timer.timeout.connect(self._read_engine_log)
         # Windows: sessiya davomida naushnik ulanishini kuzatadi.
         self.device_signature: tuple[str, ...] = ()
-        self.restart_after_devices = False
+        self.device_state_path = log_directory() / "devices.json"
         self.device_change_timer = QTimer(self)
         self.device_change_timer.setInterval(3000)
         self.device_change_timer.timeout.connect(self._check_device_changes)
@@ -1887,6 +1888,9 @@ class TranslatorWindow(QWidget):
         environment.insert("PYTHONUNBUFFERED", "1")
         # Windows: bola jarayon quvurni lokal kod sahifasida ochmasin.
         environment.insert("PYTHONIOENCODING", "utf-8:replace")
+        # Qurilma almashishi uchun kanal: GUI yozadi, dvigatel o'qiydi.
+        self.device_state_path.unlink(missing_ok=True)
+        environment.insert("LIVE_TRANSLATOR_DEVICE_STATE", str(self.device_state_path))
         self.engine_log_path.parent.mkdir(parents=True, exist_ok=True)
         # Oldingi sessiya logini saqlab qolamiz: muammo yuz bergach
         # foydalanuvchi ko'pincha ilovani qayta ishga tushiradi va
@@ -2151,13 +2155,6 @@ class TranslatorWindow(QWidget):
         self._end_control_session()
         self._restore_system_audio()
         self._set_controls(running=False)
-        if self.restart_after_devices:
-            # Qurilma o'zgargani uchun to'xtadik — yangi qurilmalar bilan
-            # o'zimiz qayta ulaymiz (foydalanuvchi hech narsa bosmaydi).
-            self.restart_after_devices = False
-            self._set_status("QAYTA ULANMOQDA…", "#f59e0b")
-            QTimer.singleShot(1200, self.start_translator)
-            return
         if is_expected_engine_exit(exit_code, stop_requested):
             self._set_status("TO‘XTADI", "#94a3b8")
             # Oldingi muvaffaqiyatsiz urinishdan qolgan "TEXNIK HOLAT"
@@ -2280,12 +2277,24 @@ class TranslatorWindow(QWidget):
         if not signature or signature == self.device_signature:
             return
         self.device_signature = signature
-        self._set_status("AUDIO QURILMA O‘ZGARDI — QAYTA ULANMOQDA", "#f59e0b")
-        self.route_hint.setText(
-            "Yangi audio qurilma aniqlandi — tarjima avtomatik qayta ulanmoqda."
-        )
-        self.restart_after_devices = True
-        self.stop_translator()
+        # Yangi qurilmani dvigatelga BILDIRAMIZ (sessiyani uzmasdan):
+        # dvigatel faylni o'qib, oqimlarni yangi qurilmada qayta ochadi.
+        # Gemini ulanishi saqlanadi — uzilish ~1 soniya.
+        mode = self._current_mode()
+        if mode == "outgoing":
+            return  # chiqish virtual kabel — almashtirilmaydi
+        desired = self._physical_output_name()
+        if not desired:
+            return
+        try:
+            self.device_state_path.parent.mkdir(parents=True, exist_ok=True)
+            self.device_state_path.write_text(
+                json.dumps({"output": desired}), encoding="utf-8"
+            )
+        except OSError:
+            return
+        self._set_status("AUDIO QURILMA ALMASHDI", "#f59e0b")
+        self.route_hint.setText(f"Tarjima ovozi «{desired}» qurilmasiga ko‘chirilmoqda…")
 
     def _restore_physical_microphone(self) -> None:
         """Tizim mikrofonini virtual kabeldan fizik mikrofonga qaytaradi.

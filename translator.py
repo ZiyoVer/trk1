@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import os
 import platform
 import signal
@@ -15,6 +16,8 @@ from contextlib import suppress
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
+
+import sounddevice as sd
 
 from audio import (
     AudioCapture,
@@ -429,12 +432,6 @@ class Translator:
         virtual kabel bo'ladi va unga tegilmasligi shart (aks holda tarjima
         Zoom'ga bormay qoladi).
         """
-        if platform.system() != "Darwin":
-            # Windows'da qurilma ulanganda PortAudio ro'yxati eskiradi va
-            # index'lar suriladi — player'ni jonli almashtirish xavfli
-            # (naushnik ulanganda tarjima butunlay to'xtab qolgan edi).
-            # U yerda GUI butun sessiyani qayta ishga tushiradi.
-            return
         follow_main = not is_virtual_device(self.output_device.name)
         if not follow_main and self.monitor_player is None:
             return
@@ -452,7 +449,64 @@ class Translator:
                 # qanday xato tarjimani to'xtatmasligi kerak.
                 self._log(f"Qurilma kuzatuvchisi xatosi (e'tiborsiz): {error}")
 
+    def _requested_output_name(self) -> str:
+        """GUI yozib qo'ygan chiqish qurilmasi nomi (Windows yo'li).
+
+        Windows'da PortAudio yangi qurilmani jarayon ichida ko'rmaydi —
+        GUI (unda ochiq audio oqim yo'q) ro'yxatni yangilab, kerakli
+        qurilma nomini shu faylga yozadi.
+        """
+        path = os.getenv("LIVE_TRANSLATOR_DEVICE_STATE", "").strip()
+        if not path:
+            return ""
+        try:
+            with open(path, encoding="utf-8") as handle:
+                return str(json.load(handle).get("output", "")).strip()
+        except Exception:
+            return ""
+
+    async def _reopen_audio(self, output_name: str) -> None:
+        """Oqimlarni Gemini sessiyasini uzmasdan yangi qurilmada qayta ochadi.
+
+        Windows'da yangi qurilma ko'rinishi uchun PortAudio'ni qayta
+        yuklash shart, buning uchun esa avval BARCHA oqimlar yopilishi
+        kerak (aks holda callback ochiq turib qulaydi).
+        """
+        input_name = self.input_device.name
+        await asyncio.to_thread(self.capture.stop)
+        await asyncio.to_thread(self.player.stop)
+        if platform.system() != "Darwin":
+            with suppress(Exception):
+                await asyncio.to_thread(sd._terminate)  # type: ignore[attr-defined]
+                await asyncio.to_thread(sd._initialize)  # type: ignore[attr-defined]
+        # Qurilmalar qayta sanalgach index'lar suriladi — NOM bo'yicha
+        # qaytadan topamiz.
+        self.input_device = auto_input_device(input_name)
+        self.output_device = auto_output_device(output_name)
+        self.player = AudioPlayer(
+            self.output_device,
+            speech_speed=self.args.speech_speed,
+            output_rate=self.args.output_sample_rate,
+            playback_profile=self.args.playback_profile,
+        )
+        self.capture = AudioCapture(self.input_device, self._from_audio_thread)
+        self.player.start()
+        self.capture.start()
+
     async def _maybe_switch_output(self, listening_cable: str, follow_main: bool) -> None:
+        if platform.system() != "Darwin":
+            # Windows: GUI aniqlagan qurilmaga issiq almashish.
+            requested = self._requested_output_name()
+            if (
+                follow_main
+                and requested
+                and requested != self.output_device.name
+                and not is_virtual_device(requested)
+            ):
+                previous = self.output_device.name
+                await self._reopen_audio(requested)
+                self._log(f"Chiqish qurilmasi almashdi: {previous} → {requested}")
+            return
         preferred = preferred_physical_output()
         if preferred is None:
             return
