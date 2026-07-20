@@ -429,6 +429,12 @@ class Translator:
         virtual kabel bo'ladi va unga tegilmasligi shart (aks holda tarjima
         Zoom'ga bormay qoladi).
         """
+        if platform.system() != "Darwin":
+            # Windows'da qurilma ulanganda PortAudio ro'yxati eskiradi va
+            # index'lar suriladi — player'ni jonli almashtirish xavfli
+            # (naushnik ulanganda tarjima butunlay to'xtab qolgan edi).
+            # U yerda GUI butun sessiyani qayta ishga tushiradi.
+            return
         follow_main = not is_virtual_device(self.output_device.name)
         if not follow_main and self.monitor_player is None:
             return
@@ -438,47 +444,54 @@ class Translator:
         while not self.stop_event.is_set():
             await asyncio.sleep(self.DEVICE_POLL_SECONDS)
             try:
-                preferred = preferred_physical_output()
-            except Exception:
-                continue
-            if preferred is None:
-                continue
-            if listening_cable and platform.system() == "Darwin":
-                # "Tinglash" rejimida GUI tizim chiqishini kabelga qaratadi.
-                # Naushnik ulanganda macOS uni o'ziga tortadi va meeting
-                # ovozi kabelga tushmay qoladi — faqat SHU holatda kabelni
-                # qaytaramiz.
-                # MUHIM: o'zimiz hech qachon yangi marshrut O'RNATMAYMIZ —
-                # avval kabel qaratilganini KO'RGAN bo'lsakgina tiklaymiz,
-                # aks holda CLI'dan ishlatilganda tizim chiqishi kabelda
-                # qolib ketardi (sinovda aynan shunday bo'ldi).
-                with suppress(Exception):
-                    from system_audio import default_output, route_output_to
+                await self._maybe_switch_output(listening_cable, follow_main)
+            except asyncio.CancelledError:
+                raise
+            except Exception as error:
+                # Qurilma almashtirish — qulaylik, majburiyat emas: hech
+                # qanday xato tarjimani to'xtatmasligi kerak.
+                self._log(f"Qurilma kuzatuvchisi xatosi (e'tiborsiz): {error}")
 
-                    current = (await asyncio.to_thread(default_output)).name
-                    if current == listening_cable:
-                        self._cable_was_system_output = True
-                    elif getattr(self, "_cable_was_system_output", False):
-                        await asyncio.to_thread(route_output_to, listening_cable)
-                        self._log(
-                            "Tizim chiqishi kabelga qaytarildi "
-                            f"(«{current}» uni tortib olgan edi)."
-                        )
-            if follow_main and preferred.name != self.output_device.name:
-                previous = self.output_device.name
-                self.player = await self._swap_player(self.player, preferred)
-                self.output_device = preferred
-                self._log(f"Chiqish qurilmasi almashdi: {previous} → {preferred.name}")
-            elif (
-                self.monitor_player is not None
-                and preferred.name != self.monitor_device.name
-            ):
-                previous = self.monitor_device.name
-                self.monitor_player = await self._swap_player(
-                    self.monitor_player, preferred
-                )
-                self.monitor_device = preferred
-                self._log(f"Nazorat ovozi almashdi: {previous} → {preferred.name}")
+    async def _maybe_switch_output(self, listening_cable: str, follow_main: bool) -> None:
+        preferred = preferred_physical_output()
+        if preferred is None:
+            return
+        if listening_cable and platform.system() == "Darwin":
+            # "Tinglash" rejimida GUI tizim chiqishini kabelga qaratadi.
+            # Naushnik ulanganda macOS uni o'ziga tortadi va meeting
+            # ovozi kabelga tushmay qoladi — faqat SHU holatda kabelni
+            # qaytaramiz.
+            # MUHIM: o'zimiz hech qachon yangi marshrut O'RNATMAYMIZ —
+            # avval kabel qaratilganini KO'RGAN bo'lsakgina tiklaymiz,
+            # aks holda CLI'dan ishlatilganda tizim chiqishi kabelda
+            # qolib ketardi (sinovda aynan shunday bo'ldi).
+            with suppress(Exception):
+                from system_audio import default_output, route_output_to
+
+                current = (await asyncio.to_thread(default_output)).name
+                if current == listening_cable:
+                    self._cable_was_system_output = True
+                elif getattr(self, "_cable_was_system_output", False):
+                    await asyncio.to_thread(route_output_to, listening_cable)
+                    self._log(
+                        "Tizim chiqishi kabelga qaytarildi "
+                        f"(«{current}» uni tortib olgan edi)."
+                    )
+        if follow_main and preferred.name != self.output_device.name:
+            previous = self.output_device.name
+            self.player = await self._swap_player(self.player, preferred)
+            self.output_device = preferred
+            self._log(f"Chiqish qurilmasi almashdi: {previous} → {preferred.name}")
+        elif (
+            self.monitor_player is not None
+            and preferred.name != self.monitor_device.name
+        ):
+            previous = self.monitor_device.name
+            self.monitor_player = await self._swap_player(
+                self.monitor_player, preferred
+            )
+            self.monitor_device = preferred
+            self._log(f"Nazorat ovozi almashdi: {previous} → {preferred.name}")
 
     async def _stop_after(self, seconds: float) -> None:
         await asyncio.sleep(seconds)

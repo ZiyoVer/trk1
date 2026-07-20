@@ -444,6 +444,12 @@ class TranslatorWindow(QWidget):
         self.engine_log_timer = QTimer(self)
         self.engine_log_timer.setInterval(100)
         self.engine_log_timer.timeout.connect(self._read_engine_log)
+        # Windows: sessiya davomida naushnik ulanishini kuzatadi.
+        self.device_signature: tuple[str, ...] = ()
+        self.restart_after_devices = False
+        self.device_change_timer = QTimer(self)
+        self.device_change_timer.setInterval(3000)
+        self.device_change_timer.timeout.connect(self._check_device_changes)
         self.heartbeat_timer = QTimer(self)
         self.heartbeat_timer.setInterval(60_000)
         self.heartbeat_timer.timeout.connect(self._send_heartbeat)
@@ -1926,6 +1932,9 @@ class TranslatorWindow(QWidget):
         self._set_status("ULANMOQDA…", "#f59e0b")
         self._set_controls(running=True)
         self.engine_log_timer.start()
+        if platform.system() != "Darwin":
+            self.device_signature = self._output_device_signature()
+            self.device_change_timer.start()
         self.connection_timer.start(20_000 if mode == "duplex" else 12_000)
         if self.license_client and self.license_client.enabled:
             threading.Thread(
@@ -2126,6 +2135,7 @@ class TranslatorWindow(QWidget):
         self.stop_requested = False
         self.connection_timer.stop()
         self.engine_log_timer.stop()
+        self.device_change_timer.stop()
         self.heartbeat_timer.stop()
         self.heartbeat_in_progress = False
         self._read_engine_log()
@@ -2141,6 +2151,13 @@ class TranslatorWindow(QWidget):
         self._end_control_session()
         self._restore_system_audio()
         self._set_controls(running=False)
+        if self.restart_after_devices:
+            # Qurilma o'zgargani uchun to'xtadik — yangi qurilmalar bilan
+            # o'zimiz qayta ulaymiz (foydalanuvchi hech narsa bosmaydi).
+            self.restart_after_devices = False
+            self._set_status("QAYTA ULANMOQDA…", "#f59e0b")
+            QTimer.singleShot(1200, self.start_translator)
+            return
         if is_expected_engine_exit(exit_code, stop_requested):
             self._set_status("TO‘XTADI", "#94a3b8")
             # Oldingi muvaffaqiyatsiz urinishdan qolgan "TEXNIK HOLAT"
@@ -2225,6 +2242,50 @@ class TranslatorWindow(QWidget):
                 if keyword in device.name.casefold():
                     return device.name
         return devices[0].name if devices else ""
+
+    @staticmethod
+    def _output_device_signature() -> tuple[str, ...]:
+        """Joriy chiqish qurilmalari ro'yxati (PortAudio yangilangan holda).
+
+        GUI'da ochiq audio oqim yo'q, shuning uchun PortAudio'ni qayta
+        yuklash xavfsiz — dvigatel esa alohida jarayonda ishlaydi.
+        """
+        try:
+            sd._terminate()  # type: ignore[attr-defined]
+            sd._initialize()  # type: ignore[attr-defined]
+        except Exception:
+            pass
+        try:
+            return tuple(
+                sorted(
+                    str(device["name"])
+                    for device in sd.query_devices()
+                    if int(device["max_output_channels"]) > 0
+                )
+            )
+        except Exception:
+            return ()
+
+    def _check_device_changes(self) -> None:
+        """Windows: naushnik ulansa/uzilsa sessiyani qayta ulaydi.
+
+        Windows'da yangi qurilma ulanganda PortAudio ro'yxati eskiradi va
+        index'lar suriladi — ochiq oqim jim qolib, tarjima to'xtab qolardi.
+        Yangi jarayon esa qurilmalarni toza sanaydi, shuning uchun eng
+        ishonchli yechim — sessiyani qayta ulash.
+        """
+        if self.process is None or platform.system() == "Darwin":
+            return
+        signature = self._output_device_signature()
+        if not signature or signature == self.device_signature:
+            return
+        self.device_signature = signature
+        self._set_status("AUDIO QURILMA O‘ZGARDI — QAYTA ULANMOQDA", "#f59e0b")
+        self.route_hint.setText(
+            "Yangi audio qurilma aniqlandi — tarjima avtomatik qayta ulanmoqda."
+        )
+        self.restart_after_devices = True
+        self.stop_translator()
 
     def _restore_physical_microphone(self) -> None:
         """Tizim mikrofonini virtual kabeldan fizik mikrofonga qaytaradi.
