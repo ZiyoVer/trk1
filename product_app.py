@@ -78,6 +78,7 @@ import keyring
 import sounddevice as sd
 from dotenv import dotenv_values
 from PySide6.QtCore import (
+    QEvent,
     QObject,
     QProcess,
     QProcessEnvironment,
@@ -874,6 +875,12 @@ class TranslatorWindow(QWidget):
         self.tray_status_action = menu.addAction("Tayyor")
         self.tray_status_action.setEnabled(False)
         menu.addSeparator()
+        # Oynani qaytarish — eng tepada: ilova LSUIElement (Dock'da
+        # ko'rinmaydi), shuning uchun yashirilgan oynani faqat shu yerdan
+        # yoki tray belgisini bosib qaytarish mumkin.
+        top_show_action = menu.addAction("Oynani ko‘rsatish")
+        top_show_action.triggered.connect(self._show_window)
+        menu.addSeparator()
         mode_group = QActionGroup(self)
         mode_group.setExclusive(True)
         self.tray_mode_actions: list[QAction] = []
@@ -911,7 +918,16 @@ class TranslatorWindow(QWidget):
         quit_action.triggered.connect(self._quit_from_tray)
         self.tray_menu = menu
         self.tray.setContextMenu(menu)
+        self.tray.activated.connect(self._tray_activated)
         self.tray.show()
+
+    def _tray_activated(self, reason) -> None:  # noqa: ANN001
+        """Tray belgisi bosilganda yashirilgan oynani qaytaradi."""
+        if reason in (
+            QSystemTrayIcon.ActivationReason.Trigger,
+            QSystemTrayIcon.ActivationReason.DoubleClick,
+        ) and not self.isVisible():
+            self._show_window()
 
     def _tray_mode_selected(self, index: int) -> None:
         if self.process is not None:
@@ -2494,9 +2510,32 @@ def run_gui() -> int:
     app = QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
     app.setOrganizationName("Live Translator")
+
+    class _ActivateFilter(QObject):
+        """Ilova ustiga bosilganda (Finder/Launchpad/Cmd+Tab) oynani qaytaradi.
+
+        LSUIElement ilovasining Dock belgisi yo'q, shuning uchun yashirilgan
+        oyna "yo'qolib qolgandek" tuyulardi.
+        """
+
+        def __init__(self, target) -> None:  # noqa: ANN001
+            super().__init__()
+            self.target = target
+
+        def eventFilter(self, obj, event) -> bool:  # noqa: ANN001, N802
+            if (
+                event.type() == QEvent.Type.ApplicationActivate
+                and self.target is not None
+                and not self.target.isVisible()
+            ):
+                self.target._show_window()
+            return False
+
     # Tarjima ishlayotganda oyna yopilsa ilova menyu panelida yashaydi.
     app.setQuitOnLastWindowClosed(False)
     window = TranslatorWindow()
+    activate_filter = _ActivateFilter(window)
+    app.installEventFilter(activate_filter)
     window.show()
     if auto_start:
         QTimer.singleShot(1_200, window.start_translator)
