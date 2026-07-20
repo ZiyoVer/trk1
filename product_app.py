@@ -893,6 +893,32 @@ class TranslatorWindow(QWidget):
             )
             self.tray_mode_actions.append(action)
         menu.addSeparator()
+        # Tillar — oynani ochmasdan almashtirish uchun.
+        self.tray_source_actions: list[QAction] = []
+        self.tray_target_actions: list[QAction] = []
+        self.tray_source_menu = menu.addMenu("Manba tili")
+        source_group = QActionGroup(self)
+        source_group.setExclusive(True)
+        for language in SOURCE_LANGUAGES:
+            action = self.tray_source_menu.addAction(language.name)
+            action.setCheckable(True)
+            source_group.addAction(action)
+            action.triggered.connect(
+                lambda _checked=False, code=language.code: self._tray_source_selected(code)
+            )
+            self.tray_source_actions.append(action)
+        self.tray_target_menu = menu.addMenu("Tarjima tili")
+        target_group = QActionGroup(self)
+        target_group.setExclusive(True)
+        for language in TARGET_LANGUAGES:
+            action = self.tray_target_menu.addAction(language.name)
+            action.setCheckable(True)
+            target_group.addAction(action)
+            action.triggered.connect(
+                lambda _checked=False, code=language.code: self._tray_target_selected(code)
+            )
+            self.tray_target_actions.append(action)
+        menu.addSeparator()
         self.tray_start_action = menu.addAction("Tarjimani boshlash")
         self.tray_start_action.triggered.connect(self.start_translator)
         self.tray_stop_action = menu.addAction("Tarjimani to‘xtatish")
@@ -912,14 +938,33 @@ class TranslatorWindow(QWidget):
             )
             restore_mic_action.triggered.connect(self._restore_physical_microphone)
         menu.addSeparator()
-        show_action = menu.addAction("Oynani ko‘rsatish")
-        show_action.triggered.connect(self._show_window)
+        settings_action = menu.addAction("Sozlamalar…")
+        settings_action.triggered.connect(self._tray_open_settings)
         quit_action = menu.addAction("Chiqish")
         quit_action.triggered.connect(self._quit_from_tray)
         self.tray_menu = menu
         self.tray.setContextMenu(menu)
         self.tray.activated.connect(self._tray_activated)
         self.tray.show()
+
+    def _tray_source_selected(self, code: str) -> None:
+        """Menyu paneldan manba tilini almashtirish."""
+        if self.process is not None:
+            self._sync_tray()
+            return
+        self._set_combo_code(self.source_language_select, code)
+
+    def _tray_target_selected(self, code: str) -> None:
+        """Menyu paneldan tarjima tilini almashtirish."""
+        if self.process is not None:
+            self._sync_tray()
+            return
+        self._set_combo_code(self.target_language_select, code)
+
+    def _tray_open_settings(self) -> None:
+        # Modal dialog ko'rinadigan oyna ustida ochilishi kerak.
+        self._show_window()
+        self.edit_settings()
 
     def _tray_activated(self, reason) -> None:  # noqa: ANN001
         """Tray belgisi bosilganda yashirilgan oynani qaytaradi."""
@@ -1040,6 +1085,15 @@ class TranslatorWindow(QWidget):
         for action, mode in zip(self.tray_mode_actions, APP_MODES):
             action.setChecked(mode.code == current)
             action.setEnabled(not active)
+        pair = self._current_pair()
+        for action, language in zip(self.tray_source_actions, SOURCE_LANGUAGES):
+            action.setChecked(language.code == pair.source)
+            action.setEnabled(not active)
+        for action, language in zip(self.tray_target_actions, TARGET_LANGUAGES):
+            action.setChecked(language.code == pair.target)
+            action.setEnabled(not active)
+        self.tray_source_menu.setTitle(f"Manba tili: {language_caption(pair.source)}")
+        self.tray_target_menu.setTitle(f"Tarjima tili: {language_caption(pair.target)}")
         self.tray_start_action.setEnabled(not active and ready)
         self.tray_stop_action.setEnabled(active)
 
@@ -1619,6 +1673,7 @@ class TranslatorWindow(QWidget):
         self.settings.sync()
         self._refresh_direction_labels()
         self._sync_mode_ui(apply_devices=False)
+        self._sync_tray()
 
     def _store_duplex_outgoing_pair(self, pair: LanguagePair) -> None:
         self.mode_pairs["outgoing"] = pair
