@@ -3,12 +3,36 @@
 from __future__ import annotations
 
 import json
+import os
 import platform
 import socket
+import ssl
 import urllib.error
 import urllib.parse
 import urllib.request
 from typing import Any
+
+import certifi
+
+
+def secure_ssl_context() -> ssl.SSLContext:
+    """PyInstaller bundle ichidagi Python macOS'ning tizim CA do'konini
+    ko'rmaydi — toza mashinada har qanday HTTPS 'CERTIFICATE_VERIFY_FAILED'
+    beradi. certifi'ning cacert.pem'i bilan kontekst quramiz."""
+    try:
+        return ssl.create_default_context(cafile=certifi.where())
+    except Exception:
+        return ssl.create_default_context()
+
+
+def ensure_ca_bundle_env() -> None:
+    """Butun jarayon (websockets/genai dvigateli ham) uchun CA yo'lini
+    e'lon qiladi; child jarayonlarga env orqali meros o'tadi."""
+    try:
+        os.environ.setdefault("SSL_CERT_FILE", certifi.where())
+        os.environ.setdefault("REQUESTS_CA_BUNDLE", certifi.where())
+    except Exception:
+        pass
 
 
 class LicenseError(RuntimeError):
@@ -70,7 +94,9 @@ class LicenseClient:
             method="POST",
         )
         try:
-            with urllib.request.urlopen(request, timeout=self.timeout) as response:
+            with urllib.request.urlopen(
+                request, timeout=self.timeout, context=secure_ssl_context()
+            ) as response:
                 result = json.loads(response.read())
         except urllib.error.HTTPError as error:
             try:

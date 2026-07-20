@@ -104,7 +104,13 @@ from language_config import (
     pair_label,
     swap_pair,
 )
-from licensing import LicenseClient, LicenseError, validate_control_url
+from licensing import (
+    LicenseClient,
+    LicenseError,
+    ensure_ca_bundle_env,
+    secure_ssl_context,
+    validate_control_url,
+)
 from system_audio import (
     InputDevice,
     OutputDevice,
@@ -1203,7 +1209,9 @@ class TranslatorWindow(QWidget):
 
     @staticmethod
     def _download_verified(url: str, path: Path, expected_sha256: str) -> None:
-        with urllib.request.urlopen(url, timeout=60) as response, path.open("wb") as output:
+        with urllib.request.urlopen(
+            url, timeout=60, context=secure_ssl_context()
+        ) as response, path.open("wb") as output:
             shutil.copyfileobj(response, output)
         digest = hashlib.sha256(path.read_bytes()).hexdigest()
         if digest != expected_sha256:
@@ -1940,6 +1948,9 @@ class TranslatorWindow(QWidget):
 
 
 def run_gui() -> int:
+    # Toza mashinada (PyInstaller bundle) tizim CA'lari ko'rinmaydi —
+    # dvigatel/websockets ham shu env orqali certifi'ni oladi.
+    ensure_ca_bundle_env()
     auto_start = "--autostart" in sys.argv
     if auto_start:
         sys.argv.remove("--autostart")

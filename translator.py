@@ -560,6 +560,10 @@ async def async_main(args: argparse.Namespace) -> int:
 
 
 def main() -> int:
+    # Toza mashinada Google'ga wss ulanish ham CA'siz yiqiladi.
+    from licensing import ensure_ca_bundle_env
+
+    ensure_ca_bundle_env()
     args = build_parser().parse_args()
     try:
         return asyncio.run(async_main(args))
