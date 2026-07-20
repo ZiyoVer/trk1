@@ -369,7 +369,7 @@ class TranslatorWindow(QWidget):
         # "Gapirish"da tarjima virtual kabelga ketadi; nazorat ovozi uni
         # naushnikda ham eshittiradi (default: yoqiq).
         self.monitor_enabled = (
-            str(self.settings.value("audio/monitor_outgoing", "true")).lower() != "false"
+            str(self.settings.value("audio/monitor_outgoing", "false")).lower() == "true"
         )
         self.mode_pairs = {
             mode.code: normalize_pair(

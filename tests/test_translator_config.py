@@ -1,5 +1,8 @@
+import argparse
 import asyncio
 import unittest
+
+import translator
 
 from translator import (
     DEFAULT_VOICE,
@@ -102,3 +105,40 @@ class TranslatorConfigTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class VoiceAndPromptWiringTests(unittest.TestCase):
+    """Ovoz va uslub prompti API'ga HAQIQATAN yuborilishini qo'riqlaydi.
+
+    Ilgari bu maydonlar konfiguratsiyaga qo'shilmasdi — "Charon ovozi"
+    va o'zbek uslub qoidalari faqat nomda qolgan edi.
+    """
+
+    @staticmethod
+    def _args(**overrides):
+        values = {
+            "source_language": "uz",
+            "target_language": "en",
+            "voice": translator.DEFAULT_VOICE,
+        }
+        values.update(overrides)
+        return argparse.Namespace(**values)
+
+    def test_charon_voice_is_sent(self) -> None:
+        config = translator.build_live_config(self._args())
+        voice = config.speech_config.voice_config.prebuilt_voice_config.voice_name
+        self.assertEqual(voice, "Charon")
+
+    def test_style_prompt_is_sent(self) -> None:
+        config = translator.build_live_config(self._args())
+        self.assertIn("interpreter", config.system_instruction.casefold())
+
+    def test_explicit_source_sends_language_hint(self) -> None:
+        config = translator.build_live_config(self._args(source_language="uz"))
+        self.assertEqual(
+            config.input_audio_transcription.language_hints.language_codes, ["uz-UZ"]
+        )
+
+    def test_auto_source_sends_no_hint(self) -> None:
+        config = translator.build_live_config(self._args(source_language="auto"))
+        self.assertIsNone(config.input_audio_transcription.language_hints)

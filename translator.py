@@ -98,10 +98,24 @@ def input_transcription_config(args: argparse.Namespace) -> types.AudioTranscrip
 
 
 def build_live_config(args: argparse.Namespace) -> types.LiveConnectConfig:
-    """Build the documented continuous Live Translate configuration."""
+    """Build the documented continuous Live Translate configuration.
+
+    speech_config va system_instruction jonli A/B bilan tekshirilgan
+    (2026-07-20): uchala variantda ham audio to'liq chiqadi. Ilgari bu
+    maydonlar umuman yuborilmasdi — ya'ni "Charon ovozi" va o'zbek uslub
+    qoidalari faqat qog'ozda qolgan edi.
+    """
 
     return types.LiveConnectConfig(
         response_modalities=["AUDIO"],
+        system_instruction=translation_instruction(args),
+        speech_config=types.SpeechConfig(
+            voice_config=types.VoiceConfig(
+                prebuilt_voice_config=types.PrebuiltVoiceConfig(
+                    voice_name=args.voice or DEFAULT_VOICE
+                )
+            )
+        ),
         input_audio_transcription=input_transcription_config(args),
         output_audio_transcription=types.AudioTranscriptionConfig(),
         translation_config=types.TranslationConfig(
