@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
+import platform
 import signal
 import sys
 import tempfile
@@ -21,8 +22,9 @@ from audio import (
     auto_input_device,
     auto_output_device,
     list_devices,
+    preferred_physical_output,
 )
-from audio_routing import is_forbidden_route, virtual_device_family
+from audio_routing import is_forbidden_route, is_virtual_device, virtual_device_family
 from playback_profiles import DEFAULT_PLAYBACK_PROFILE, PLAYBACK_PROFILES
 
 try:
@@ -260,6 +262,7 @@ class Translator:
             self._log(f"Nazorat ovozi: {self.monitor_device.name}")
         self.capture.start()
         self.started_at = time.monotonic()
+        device_watcher = asyncio.create_task(self._watch_output_device())
         delay = 1.0
         try:
             while not self.stop_event.is_set():
@@ -286,6 +289,9 @@ class Translator:
                         pass
                     delay = min(delay * 2, 15.0)
         finally:
+            device_watcher.cancel()
+            with suppress(asyncio.CancelledError):
+                await device_watcher
             self.capture.stop()
             # To'xtashda qoldiq tarjimani oxirigacha ijro qilib o'tirmaymiz —
             # duplex'da ikki player'ning to'liq drain'i 6s dan oshib, GUI
@@ -401,6 +407,78 @@ class Translator:
                 self.audio_queue.get_nowait()
                 continue
             return
+
+    DEVICE_POLL_SECONDS = 2.0
+
+    async def _swap_player(self, player: AudioPlayer, device) -> AudioPlayer:  # noqa: ANN001
+        """Ijro qurilmasini sessiyani to'xtatmasdan almashtiradi."""
+        replacement = AudioPlayer(
+            device,
+            speech_speed=self.args.speech_speed,
+            output_rate=None,
+            playback_profile=self.args.playback_profile,
+        )
+        replacement.start()
+        await asyncio.to_thread(player.stop)
+        return replacement
+
+    async def _watch_output_device(self) -> None:
+        """Naushnik ulansa/uzilsa tarjima ovozini yangi qurilmaga ko'chiradi.
+
+        Faqat FIZIK chiqishlar kuzatiladi: "Gapirish" rejimida chiqish
+        virtual kabel bo'ladi va unga tegilmasligi shart (aks holda tarjima
+        Zoom'ga bormay qoladi).
+        """
+        follow_main = not is_virtual_device(self.output_device.name)
+        if not follow_main and self.monitor_player is None:
+            return
+        listening_cable = (
+            self.input_device.name if is_virtual_device(self.input_device.name) else ""
+        )
+        while not self.stop_event.is_set():
+            await asyncio.sleep(self.DEVICE_POLL_SECONDS)
+            try:
+                preferred = preferred_physical_output()
+            except Exception:
+                continue
+            if preferred is None:
+                continue
+            if listening_cable and platform.system() == "Darwin":
+                # "Tinglash" rejimida GUI tizim chiqishini kabelga qaratadi.
+                # Naushnik ulanganda macOS uni o'ziga tortadi va meeting
+                # ovozi kabelga tushmay qoladi — faqat SHU holatda kabelni
+                # qaytaramiz.
+                # MUHIM: o'zimiz hech qachon yangi marshrut O'RNATMAYMIZ —
+                # avval kabel qaratilganini KO'RGAN bo'lsakgina tiklaymiz,
+                # aks holda CLI'dan ishlatilganda tizim chiqishi kabelda
+                # qolib ketardi (sinovda aynan shunday bo'ldi).
+                with suppress(Exception):
+                    from system_audio import default_output, route_output_to
+
+                    current = (await asyncio.to_thread(default_output)).name
+                    if current == listening_cable:
+                        self._cable_was_system_output = True
+                    elif getattr(self, "_cable_was_system_output", False):
+                        await asyncio.to_thread(route_output_to, listening_cable)
+                        self._log(
+                            "Tizim chiqishi kabelga qaytarildi "
+                            f"(«{current}» uni tortib olgan edi)."
+                        )
+            if follow_main and preferred.name != self.output_device.name:
+                previous = self.output_device.name
+                self.player = await self._swap_player(self.player, preferred)
+                self.output_device = preferred
+                self._log(f"Chiqish qurilmasi almashdi: {previous} → {preferred.name}")
+            elif (
+                self.monitor_player is not None
+                and preferred.name != self.monitor_device.name
+            ):
+                previous = self.monitor_device.name
+                self.monitor_player = await self._swap_player(
+                    self.monitor_player, preferred
+                )
+                self.monitor_device = preferred
+                self._log(f"Nazorat ovozi almashdi: {previous} → {preferred.name}")
 
     async def _stop_after(self, seconds: float) -> None:
         await asyncio.sleep(seconds)

@@ -155,6 +155,54 @@ def is_physical_output(device: dict) -> bool:
     )
 
 
+BUILTIN_OUTPUT_MARKERS = (
+    "macbook",
+    "built-in",
+    "internal",
+    "realtek digital",
+)
+
+
+def preferred_physical_output() -> DeviceChoice | None:
+    """Foydalanuvchi HOZIR eshitayotgan fizik chiqish qurilmasi.
+
+    Yagona mezon — TIZIMNING joriy chiqish qurilmasi: naushnik ulanganda
+    macOS uni o'zi tanlaydi, ya'ni har qanday marka (AirPods, JBL, Sony…)
+    avtomatik ishlaydi. Tizim tanlovi virtual kabel yoki "Sound Mapper"
+    bo'lsa — None qaytaramiz va joriy qurilma o'zgarmaydi.
+
+    DIQQAT: "tashqi qurilma afzal" qoidasi ishlatilmaydi — u ulangan
+    monitorni (masalan P2961) naushnik deb tanlab, ovozni hech kim
+    eshitmaydigan joyga yuborardi (design/08-heuristic-evaluation.md).
+    """
+    try:
+        devices: Sequence[dict] = sd.query_devices()
+    except Exception:
+        return None
+
+    name = ""
+    if platform.system() == "Darwin":
+        try:
+            from system_audio import default_output as _system_default_output
+
+            name = _system_default_output().name
+        except Exception:
+            name = ""
+    if not name:
+        try:
+            default_index = int(sd.default.device[1])
+            if 0 <= default_index < len(devices):
+                name = _device_name(devices[default_index])
+        except Exception:
+            return None
+    if not name or is_virtual_device(name) or is_alias_output(name):
+        return None
+    for index, device in enumerate(devices):
+        if is_physical_output(device) and _device_name(device) == name:
+            return find_device(str(index), "output")
+    return None
+
+
 def auto_output_device(query: str | None) -> DeviceChoice:
     if query:
         return find_device(query, "output")

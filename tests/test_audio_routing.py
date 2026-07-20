@@ -107,5 +107,61 @@ class AliasOutputTests(unittest.TestCase):
                 audio.is_physical_output({"name": name, "max_output_channels": 16}), name
             )
 
+
+
+class PreferredPhysicalOutputTests(unittest.TestCase):
+    """Sessiya davomida qurilma almashishi: TIZIM tanlovi asos bo'ladi."""
+
+    DEVICES = [
+        {"name": "MacBook Air Microphone", "max_input_channels": 1, "max_output_channels": 0},
+        {"name": "BlackHole 2ch", "max_input_channels": 2, "max_output_channels": 2},
+        {"name": "MacBook Air Speakers", "max_input_channels": 0, "max_output_channels": 2},
+        {"name": "P2961", "max_input_channels": 0, "max_output_channels": 2},
+        {"name": "JBL TUNE 510BT", "max_input_channels": 0, "max_output_channels": 2},
+    ]
+
+    def _patch(self, system_default: str) -> None:
+        devices = self.DEVICES
+
+        class FakeSD:
+            default = type("d", (), {"device": [0, 2]})()
+
+            @staticmethod
+            def query_devices(*args, **kwargs):
+                return devices
+
+        import system_audio
+
+        self._original = (audio.sd, audio.find_device, system_audio.default_output)
+        audio.sd = FakeSD
+        audio.find_device = lambda query, kind: audio.DeviceChoice(
+            int(query), devices[int(query)]["name"], 48000, 2
+        )
+        system_audio.default_output = lambda: system_audio.OutputDevice(0, system_default)
+        self.addCleanup(self._restore)
+
+    def _restore(self) -> None:
+        import system_audio
+
+        audio.sd, audio.find_device, system_audio.default_output = self._original
+
+    def test_any_headphone_brand_is_followed(self) -> None:
+        # macOS BT naushnik ulanganda uni o'zi tizim chiqishiga qo'yadi.
+        self._patch(system_default="JBL TUNE 510BT")
+        self.assertEqual(audio.preferred_physical_output().name, "JBL TUNE 510BT")
+
+    def test_connected_monitor_does_not_steal_audio(self) -> None:
+        # P2961 regressiyasi: monitor ulangani ovozni tortib ketmasin —
+        # tizim chiqishi MacBook karnayida qolsa, shu qoladi.
+        self._patch(system_default="MacBook Air Speakers")
+        self.assertEqual(audio.preferred_physical_output().name, "MacBook Air Speakers")
+
+    def test_virtual_system_output_means_no_switch(self) -> None:
+        # "Tinglash" rejimida tizim chiqishi kabelga qaratilgan — bunda
+        # hech narsa almashtirilmaydi (aks holda tarjima kabelga tushardi).
+        self._patch(system_default="BlackHole 2ch")
+        self.assertIsNone(audio.preferred_physical_output())
+
+
 if __name__ == "__main__":
     unittest.main()
