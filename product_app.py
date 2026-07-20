@@ -705,8 +705,12 @@ class TranslatorWindow(QWidget):
 
         self.route_hint = QLabel("")
         self.route_hint.setWordWrap(True)
+        # Zoom mikrofoni noto'g'ri bo'lsa hamma narsa ishlab tursa ham
+        # suhbatdoshlar tarjimani eshitmaydi — bu ogohlantirish ko'zga
+        # tashlanadigan bo'lishi kerak.
         self.route_hint.setStyleSheet(
-            "color: #80bad9; padding: 2px 1px; font-size: 10px;"
+            "color: #ffd166; background: #2a2415; border: 1px solid #4a3f1e; "
+            "border-radius: 7px; padding: 7px 9px; font-size: 11px; font-weight: 600;"
         )
         layout.addWidget(self.route_hint)
 
@@ -1215,9 +1219,9 @@ class TranslatorWindow(QWidget):
             )
             pair = self._current_pair()
             self.route_hint.setText(
-                f"Siz {language_caption(pair.source)} gapirasiz — meetingdagilar "
-                f"{language_caption(pair.target)} eshitadi. Zoom/Meet mikrofonida "
-                f"“Same as System” yoki “{meeting_microphone}”ni tanlang."
+                f"⚠️  ZOOM/MEET SOZLAMASI SHART: Microphone → “{meeting_microphone}” "
+                "(yoki “Same as System”). Aks holda suhbatdoshlar tarjimani emas, "
+                f"sizning {language_caption(pair.source)} ovozingizni eshitadi."
             )
         elif virtual_input and not virtual_output:
             self.route_hint.setText(
