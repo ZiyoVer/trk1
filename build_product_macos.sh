@@ -19,7 +19,7 @@ arch -arm64 .venv/bin/python -m PyInstaller \
   --onedir \
   --target-arch arm64 \
   --name "Live Translator" \
-  --icon packaging/icon/AppIcon.icns \
+  --icon "$ROOT/packaging/icon/AppIcon.icns" \
   --osx-bundle-identifier "local.live-translator" \
   --distpath dist/product \
   --workpath build/product \
