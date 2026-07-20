@@ -60,13 +60,24 @@ from PySide6.QtCore import (
     QObject,
     QProcess,
     QProcessEnvironment,
+    QRectF,
     QSettings,
     Qt,
     QTimer,
     QUrl,
     Signal,
 )
-from PySide6.QtGui import QColor, QDesktopServices, QMouseEvent, QPainter, QPainterPath
+from PySide6.QtGui import (
+    QAction,
+    QActionGroup,
+    QColor,
+    QDesktopServices,
+    QIcon,
+    QMouseEvent,
+    QPainter,
+    QPainterPath,
+    QPixmap,
+)
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -76,8 +87,10 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMenu,
     QMessageBox,
     QPushButton,
+    QSystemTrayIcon,
     QVBoxLayout,
     QWidget,
 )
@@ -332,6 +345,7 @@ class TranslatorWindow(QWidget):
         self.drag_offset = None
         self.process: QProcess | None = None
         self.stop_requested = False
+        self.quit_requested = False
         self.connected = False
         self.connected_channels: set[str] = set()
         self.output_buffer = ""
@@ -748,9 +762,120 @@ class TranslatorWindow(QWidget):
         self.duplex_outgoing_target.currentIndexChanged.connect(
             self._duplex_outgoing_target_changed
         )
+        self._build_tray()
         self._sync_mode_ui(apply_devices=False)
         self._refresh_audio_devices()
         self._set_controls(running=False)
+
+    # ------------------------------------------------------------------
+    # Menyu paneli (macOS status bar) — oynani ochmasdan boshqarish
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _tray_pixmap(size: int = 22) -> QIcon:
+        """Menyu paneli uchun template ikon (qora + shaffof).
+
+        macOS template ikonlari yorug'/qorong'i panelga o'zi moslashadi —
+        rangli ikon qo'yilsa panelda kir ko'rinadi.
+        """
+        pixmap = QPixmap(size, size)
+        pixmap.fill(Qt.transparent)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor("#000000"))
+        bars = (0.34, 0.62, 1.0, 0.62, 0.34)
+        bar_width = size * 0.105
+        gap = size * 0.075
+        total = len(bars) * bar_width + (len(bars) - 1) * gap
+        x = (size - total) / 2
+        max_height = size * 0.62
+        for factor in bars:
+            height = max_height * factor
+            painter.drawRoundedRect(
+                QRectF(x, (size - height) / 2, bar_width, height),
+                bar_width / 2,
+                bar_width / 2,
+            )
+            x += bar_width + gap
+        painter.end()
+        icon = QIcon(pixmap)
+        icon.setIsMask(True)
+        return icon
+
+    def _build_tray(self) -> None:
+        self.tray_available = QSystemTrayIcon.isSystemTrayAvailable()
+        if not self.tray_available:
+            self.tray = None
+            return
+        self.tray = QSystemTrayIcon(self)
+        self.tray.setIcon(self._tray_pixmap())
+        self.tray.setToolTip(APP_NAME)
+        menu = QMenu()
+        self.tray_status_action = menu.addAction("Tayyor")
+        self.tray_status_action.setEnabled(False)
+        menu.addSeparator()
+        mode_group = QActionGroup(self)
+        mode_group.setExclusive(True)
+        self.tray_mode_actions: list[QAction] = []
+        for index, mode in enumerate(APP_MODES):
+            action = menu.addAction(mode.title)
+            action.setCheckable(True)
+            mode_group.addAction(action)
+            action.triggered.connect(
+                lambda _checked=False, position=index: self._tray_mode_selected(position)
+            )
+            self.tray_mode_actions.append(action)
+        menu.addSeparator()
+        self.tray_start_action = menu.addAction("Tarjimani boshlash")
+        self.tray_start_action.triggered.connect(self.start_translator)
+        self.tray_stop_action = menu.addAction("Tarjimani to‘xtatish")
+        self.tray_stop_action.triggered.connect(self.stop_translator)
+        menu.addSeparator()
+        show_action = menu.addAction("Oynani ko‘rsatish")
+        show_action.triggered.connect(self._show_window)
+        quit_action = menu.addAction("Chiqish")
+        quit_action.triggered.connect(self._quit_from_tray)
+        self.tray_menu = menu
+        self.tray.setContextMenu(menu)
+        self.tray.show()
+
+    def _tray_mode_selected(self, index: int) -> None:
+        if self.process is not None:
+            # Rejim almashtirish yangi Gemini sessiyasini talab qiladi;
+            # jonli tarjimani jimgina uzib yubormaymiz.
+            self._sync_tray()
+            if self.tray:
+                self.tray.showMessage(
+                    APP_NAME,
+                    "Rejimni almashtirish uchun avval tarjimani to‘xtating.",
+                    QSystemTrayIcon.MessageIcon.Information,
+                    4000,
+                )
+            return
+        self.direction.setCurrentIndex(index)
+
+    def _show_window(self) -> None:
+        self.showNormal()
+        self.raise_()
+        self.activateWindow()
+
+    def _quit_from_tray(self) -> None:
+        self.quit_requested = True
+        self.close()
+        QApplication.quit()
+
+    def _sync_tray(self, running: bool | None = None, ready: bool = True) -> None:
+        tray = getattr(self, "tray", None)
+        if tray is None:
+            return
+        active = self.process is not None if running is None else running
+        current = self._current_mode()
+        for action, mode in zip(self.tray_mode_actions, APP_MODES):
+            action.setChecked(mode.code == current)
+            action.setEnabled(not active)
+        self.tray_start_action.setEnabled(not active and ready)
+        self.tray_stop_action.setEnabled(active)
 
     def _load_api_key(self) -> str:
         try:
@@ -1382,6 +1507,7 @@ class TranslatorWindow(QWidget):
         self.settings.setValue("translation/active_mode", self._current_mode())
         self.settings.sync()
         self._sync_mode_ui(apply_devices=True)
+        self._sync_tray()
 
     def _set_controls(self, running: bool) -> None:
         devices_ready = (
@@ -1431,10 +1557,17 @@ class TranslatorWindow(QWidget):
             if running
             else "QPushButton { background: #263449; color: #77879d; font-size: 13px; }"
         )
+        self._sync_tray(running=running, ready=ready)
 
     def _set_status(self, text: str, color: str) -> None:
         self.status.setText(f"●  {text}")
         self.status.setStyleSheet(f"color: {color}; font-size: 10px; font-weight: 700;")
+        status_action = getattr(self, "tray_status_action", None)
+        if status_action is not None:
+            status_action.setText(text.capitalize())
+        tray = getattr(self, "tray", None)
+        if tray is not None:
+            tray.setToolTip(f"{APP_NAME} — {text.capitalize()}")
 
     def start_translator(self) -> None:
         if self.process is not None or self.license_check_in_progress:
@@ -1938,6 +2071,19 @@ class TranslatorWindow(QWidget):
         self.drag_offset = None
 
     def closeEvent(self, event) -> None:  # noqa: ANN001
+        tray = getattr(self, "tray", None)
+        if self.process is not None and not self.quit_requested and tray is not None:
+            # Jonli tarjimani oyna yopilgani uchun uzmaymiz — ilova menyu
+            # panelida davom etadi. Butunlay chiqish: tray > Chiqish.
+            event.ignore()
+            self.hide()
+            tray.showMessage(
+                APP_NAME,
+                "Tarjima davom etmoqda — menyu panelidan boshqaring.",
+                QSystemTrayIcon.MessageIcon.Information,
+                4000,
+            )
+            return
         self.heartbeat_timer.stop()
         if self.process:
             self.stop_requested = True
@@ -1945,7 +2091,12 @@ class TranslatorWindow(QWidget):
             self.process.waitForFinished(2000)
         self._end_control_session()
         self._restore_system_audio()
+        if tray is not None:
+            tray.hide()
         event.accept()
+        # setQuitOnLastWindowClosed(False) tray uchun kerak — demak
+        # oyna yopilganda chiqishni o'zimiz chaqiramiz.
+        QApplication.quit()
 
 
 def run_gui() -> int:
@@ -1958,6 +2109,8 @@ def run_gui() -> int:
     app = QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
     app.setOrganizationName("Live Translator")
+    # Tarjima ishlayotganda oyna yopilsa ilova menyu panelida yashaydi.
+    app.setQuitOnLastWindowClosed(False)
     window = TranslatorWindow()
     window.show()
     if auto_start:
