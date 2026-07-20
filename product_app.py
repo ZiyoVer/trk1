@@ -114,7 +114,12 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from audio import available_devices, auto_input_device, auto_output_device
+from audio import (
+    available_devices,
+    auto_input_device,
+    auto_output_device,
+    preferred_physical_output,
+)
 from audio_routing import (
     AudioEndpoint,
     DuplexRoutes,
@@ -1326,19 +1331,10 @@ class TranslatorWindow(QWidget):
             self._select_device_kind(
                 self.output_device,
                 virtual=False,
-                # Naushnik ULANGAN bo'lsa u avtomatik yutadi — karnay oxirgi
-                # chora. Duplex'da bu feedback halqasini ham fizik uzadi
-                # (karnaydagi tarjimani mikrofon eshitmaydi).
-                preferred_words=(
-                    "airpods",
-                    "headphone",
-                    "headset",
-                    "external",
-                    "usb",
-                    "macbook air speakers",
-                    "speaker",
-                    "built-in",
-                ),
+                # Birinchi navbatda foydalanuvchi HOZIR eshitayotgan qurilma
+                # (tizim tanlovi) — nomi "P2961" kabi notanish bo'lsa ham
+                # to'g'ri topiladi. Nomga qarab tanlash faqat zaxira yo'l.
+                preferred_words=self._output_preference_words(),
             )
         else:
             self._select_device_kind(
@@ -2187,15 +2183,44 @@ class TranslatorWindow(QWidget):
         # surface a waiting state until a later connection succeeds.
         self.connection_timer.start(30_000)
 
+    @staticmethod
+    def _output_preference_words() -> tuple[str, ...]:
+        """Tarjima chiqishi uchun afzallik ro'yxati.
+
+        Birinchi o'rinda TIZIM tanlagan fizik qurilma turadi: foydalanuvchi
+        Bluetooth naushnigini ulaganda macOS uni o'zi tanlaydi, ya'ni nomi
+        "P2961" yoki "JBL TUNE" bo'lsa ham to'g'ri topiladi. Kalit so'zlar
+        faqat zaxira (tizim tanlovi virtual kabel bo'lib qolgan hollar).
+        """
+        words: list[str] = []
+        try:
+            choice = preferred_physical_output()
+        except Exception:
+            choice = None
+        if choice is not None:
+            words.append(choice.name.casefold())
+        words.extend(
+            (
+                "airpods",
+                "headphone",
+                "headset",
+                "external",
+                "usb",
+                "macbook air speakers",
+                "speaker",
+                "built-in",
+            )
+        )
+        return tuple(words)
+
     def _physical_output_name(self) -> str:
-        """Nazorat ovozi uchun virtual bo'lmagan chiqish (naushnik afzal)."""
-        preferred = ("airpods", "headphone", "headset", "external", "usb")
+        """Nazorat ovozi uchun virtual bo'lmagan chiqish (tizim tanlovi afzal)."""
         devices = [
             device
             for device in available_devices("output")
             if not is_virtual_device(device.name)
         ]
-        for keyword in preferred:
+        for keyword in self._output_preference_words():
             for device in devices:
                 if keyword in device.name.casefold():
                     return device.name
