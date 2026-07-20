@@ -346,6 +346,7 @@ class TranslatorWindow(QWidget):
         self.process: QProcess | None = None
         self.stop_requested = False
         self.quit_requested = False
+        self.minimize_hint_shown = False
         self.connected = False
         self.connected_channels: set[str] = set()
         self.output_buffer = ""
@@ -462,6 +463,17 @@ class TranslatorWindow(QWidget):
             "QPushButton:pressed { background: #101a2a; }"
         )
         settings.clicked.connect(self.edit_settings)
+        minimize = QPushButton("–")
+        minimize.setAccessibleName("Kichraytirish")
+        minimize.setFixedSize(36, 34)
+        minimize.setToolTip("Kichraytirish")
+        minimize.setStyleSheet(
+            "QPushButton { background: #162236; color: #cbd5e1; font-size: 18px; "
+            "padding: 0px; border-radius: 7px; } "
+            "QPushButton:hover { background: #202f47; color: white; } "
+            "QPushButton:pressed { background: #101a2a; }"
+        )
+        minimize.clicked.connect(self._minimize_window)
         close = QPushButton("✕")
         close.setAccessibleName("Yopish")
         close.setFixedSize(36, 34)
@@ -478,6 +490,7 @@ class TranslatorWindow(QWidget):
         header.addWidget(self.status)
         header.addStretch()
         header.addWidget(settings)
+        header.addWidget(minimize)
         header.addWidget(close)
         layout.addLayout(header)
 
@@ -854,6 +867,27 @@ class TranslatorWindow(QWidget):
                 )
             return
         self.direction.setCurrentIndex(index)
+
+    def _minimize_window(self) -> None:
+        """Oynani ko'zdan yashiradi (tarjima to'xtamaydi).
+
+        Oyna Qt.Tool turida — macOS'da minimize qilingan Tool oynasi Dock'da
+        ko'rinmaydi, ya'ni uni qaytarib ochib bo'lmasdi. Shu sabab menyu
+        paneliga yashiramiz: tray > "Oynani ko'rsatish" bilan qaytadi.
+        """
+        tray = getattr(self, "tray", None)
+        if tray is None:
+            self.showMinimized()
+            return
+        self.hide()
+        if not self.minimize_hint_shown:
+            self.minimize_hint_shown = True
+            tray.showMessage(
+                APP_NAME,
+                "Oyna yashirildi — menyu panelidagi belgidan qaytariladi.",
+                QSystemTrayIcon.MessageIcon.Information,
+                4000,
+            )
 
     def _show_window(self) -> None:
         self.showNormal()
