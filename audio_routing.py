@@ -49,6 +49,22 @@ def virtual_device_family(name: str) -> str:
     return folded
 
 
+def is_forbidden_route(
+    input_name: str, output_name: str, input_id: int, output_id: int
+) -> bool:
+    """Bitta virtual kabelning ikki uchini input+output qilish = feedback loop.
+
+    macOS'da BlackHole 2ch bitta qurilma (bir xil index); Windows'da esa
+    "CABLE Input" va "CABLE Output" ALOHIDA indexli endpointlar, lekin bitta
+    kabel — shuning uchun index emas, virtual_device_family solishtiriladi.
+    """
+    if not (is_virtual_device(input_name) and is_virtual_device(output_name)):
+        return False
+    if input_id == output_id:
+        return True
+    return virtual_device_family(input_name) == virtual_device_family(output_name)
+
+
 def validate_duplex_routes(routes: DuplexRoutes) -> None:
     """Reject unsafe full-duplex routes before CoreAudio is changed."""
 

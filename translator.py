@@ -22,7 +22,7 @@ from audio import (
     auto_output_device,
     list_devices,
 )
-from audio_routing import virtual_device_family
+from audio_routing import is_forbidden_route, virtual_device_family
 from playback_profiles import DEFAULT_PLAYBACK_PROFILE, PLAYBACK_PROFILES
 
 try:
@@ -519,6 +519,15 @@ async def async_main(args: argparse.Namespace) -> int:
             "Duplex rejimida incoming input va outgoing output "
             "alohida virtual audio kabellar bo‘lishi kerak"
         )
+    if not args.duplex:
+        single_in, single_out = resolved_devices[0]
+        if is_forbidden_route(
+            single_in.name, single_out.name, single_in.index, single_out.index
+        ):
+            raise ValueError(
+                "Input va output bitta virtual kabelga ulanmaydi — "
+                "tarjima o‘z-o‘ziga qaytib feedback loop yaratadi."
+            )
     if args.check:
         for _channel, route in route_args:
             await check_connection(key, route)

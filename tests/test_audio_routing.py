@@ -1,6 +1,27 @@
 import unittest
 
-from audio_routing import AudioEndpoint, DuplexRoutes, validate_duplex_routes
+from audio_routing import (
+    AudioEndpoint,
+    DuplexRoutes,
+    is_forbidden_route,
+    validate_duplex_routes,
+)
+
+
+class ForbiddenRouteTests(unittest.TestCase):
+    def test_same_vb_cable_endpoints_are_rejected_on_windows(self) -> None:
+        # Windows: CABLE Output (input tomoni) va CABLE Input (output tomoni)
+        # ALOHIDA indexlar, lekin bitta kabel.
+        self.assertTrue(is_forbidden_route("CABLE Output", "CABLE Input", 4, 5))
+
+    def test_same_blackhole_device_is_rejected_on_macos(self) -> None:
+        self.assertTrue(is_forbidden_route("BlackHole 2ch", "BlackHole 2ch", 2, 2))
+
+    def test_distinct_cable_families_are_allowed(self) -> None:
+        self.assertFalse(is_forbidden_route("CABLE-A Output", "CABLE-B Input", 4, 5))
+
+    def test_virtual_to_physical_route_is_allowed(self) -> None:
+        self.assertFalse(is_forbidden_route("BlackHole 2ch", "MacBook Air Speakers", 2, 3))
 
 
 def valid_routes() -> DuplexRoutes:

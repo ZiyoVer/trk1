@@ -85,6 +85,7 @@ from audio import available_devices, auto_input_device, auto_output_device
 from audio_routing import (
     AudioEndpoint,
     DuplexRoutes,
+    is_forbidden_route,
     is_virtual_device,
     validate_duplex_routes,
     virtual_device_family,
@@ -1560,9 +1561,9 @@ class TranslatorWindow(QWidget):
                     raise ValueError(
                         "GAPIRISH rejimi uchun fizik mikrofon va virtual chiqish kerak."
                     )
-                if input_id == output_id and input_virtual and output_virtual:
+                if is_forbidden_route(input_name, output_name, input_id, output_id):
                     raise ValueError(
-                        "Bir virtual qurilmani ham input, ham output qilish feedback loop yaratadi."
+                        "Bir virtual kabelni ham input, ham output qilish feedback loop yaratadi."
                     )
                 if platform.system() == "Darwin" and input_virtual and not output_virtual:
                     self.previous_system_output = route_output_to(input_name)
