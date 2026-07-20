@@ -21,6 +21,7 @@ Set-Content -Encoding UTF8 $RuntimeHook "import os`nos.environ.setdefault(`"LIVE
     --windowed `
     --onedir `
     --name "Live Translator" `
+    --icon packaging\icon\AppIcon.ico `
     --distpath dist\product `
     --workpath build\product `
     --specpath build\product `

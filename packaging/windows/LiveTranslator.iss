@@ -14,6 +14,7 @@ OutputDir=..\..\installer\windows
 OutputBaseFilename=LiveTranslator-Setup-{#MyAppVersion}
 Compression=lzma2
 SolidCompression=yes
+SetupIconFile=..\icon\AppIcon.ico
 WizardStyle=modern
 PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible arm64
