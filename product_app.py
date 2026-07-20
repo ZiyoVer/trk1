@@ -922,11 +922,11 @@ class TranslatorWindow(QWidget):
             self._populate_devices(self.output_device, outputs, preferred_output)
             self._populate_devices(self.duplex_outgoing_input, inputs, preferred_input)
             self._populate_devices(self.duplex_outgoing_output, outputs, preferred_output)
-            if not self.audio_devices_initialized:
-                self.audio_devices_initialized = True
-                self._apply_direction_devices(self._current_mode())
-            else:
-                self._audio_route_changed()
+            self.audio_devices_initialized = True
+            # To'liq avtomatik rejim: ro'yxat har yangilanganda (AirPods
+            # ulandi/uzildi va h.k.) yo'nalish presetlari qayta qo'llanadi —
+            # foydalanuvchi hech qachon qo'lda tanlashi shart emas.
+            self._apply_direction_devices(self._current_mode())
         except Exception as error:
             self.route_hint.setText(f"Audio qurilmalar o‘qilmadi: {error}")
 
@@ -1054,10 +1054,16 @@ class TranslatorWindow(QWidget):
             self._select_device_kind(
                 self.output_device,
                 virtual=False,
+                # Naushnik ULANGAN bo'lsa u avtomatik yutadi — karnay oxirgi
+                # chora. Duplex'da bu feedback halqasini ham fizik uzadi
+                # (karnaydagi tarjimani mikrofon eshitmaydi).
                 preferred_words=(
-                    "macbook air speakers",
-                    "headphone",
                     "airpods",
+                    "headphone",
+                    "headset",
+                    "external",
+                    "usb",
+                    "macbook air speakers",
                     "speaker",
                     "built-in",
                 ),

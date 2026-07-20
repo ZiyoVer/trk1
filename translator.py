@@ -96,6 +96,34 @@ def build_live_config(args: argparse.Namespace) -> types.LiveConnectConfig:
     )
 
 
+class CaptureGate:
+    """Yarim-duplex himoya: "Ikkalasi" rejimida eshitish kanali tarjima
+    OVOZINI karnayda ijro qilayotgan paytda gapirish kanalining mikrofonini
+    vaqtincha "kar" qiladi.
+
+    Sabab: eshitish tarjimasi fizik karnayga chiqadi, gapirish kanali esa
+    fizik mikrofonni yozadi — karnaydagi o'zbekcha tarjimani mikrofon
+    eshitib, uni qaytadan meeting tiliga tarjima qilib yuborardi
+    (tarjimaning-tarjimasi halqasi). TAIL_SECONDS — karnay so'nishi va
+    yozuv kechikishini qoplaydigan qo'shimcha dum.
+    """
+
+    TAIL_SECONDS = 0.4
+
+    def __init__(self, source_player_ref, clock=time.monotonic):  # noqa: ANN001
+        self._source_player_ref = source_player_ref
+        self._clock = clock
+        self._blocked_until = 0.0
+
+    def should_drop(self) -> bool:
+        player = self._source_player_ref()
+        now = self._clock()
+        if player is not None and player.has_audio():
+            self._blocked_until = now + self.TAIL_SECONDS
+            return True
+        return now < self._blocked_until
+
+
 class Translator:
     def __init__(self, args: argparse.Namespace, channel: str = ""):
         self.args = args
@@ -118,6 +146,11 @@ class Translator:
         self.input_bytes = 0
         self.output_bytes = 0
         self.source_language = args.source_language.upper()
+        # Duplex'da tashqaridan o'rnatiladi (async_main): gapirish kanali
+        # uchun eshitish kanalining player'iga bog'langan feedback-gate.
+        self.capture_gate: CaptureGate | None = None
+        self.gated_chunks = 0
+        self._last_gate_log = 0.0
 
     def _log(self, message: str) -> None:
         prefix = f"[{self.channel}] " if self.channel else ""
@@ -127,6 +160,18 @@ class Translator:
         self.loop.call_soon_threadsafe(self._enqueue_audio, data)
 
     def _enqueue_audio(self, data: bytes) -> None:
+        if self.capture_gate is not None and self.capture_gate.should_drop():
+            # O'z tarjimamiz karnayda yangrayapti — bu chunk'ni yuborsak,
+            # model uni "yangi gap" deb qabul qilib qayta tarjima qiladi.
+            self.gated_chunks += 1
+            now = time.monotonic()
+            if now - self._last_gate_log >= 5.0:
+                self._last_gate_log = now
+                self._log(
+                    "Mikrofon vaqtincha jim: o‘z tarjimamiz ijro etilmoqda "
+                    f"(feedback himoyasi, {self.gated_chunks} chunk)."
+                )
+            return
         if self.audio_queue.full():
             with suppress(asyncio.QueueEmpty):
                 self.audio_queue.get_nowait()
@@ -477,6 +522,15 @@ async def async_main(args: argparse.Namespace) -> int:
     engine_lock = acquire_engine_lock()
     try:
         translators = [Translator(route, channel) for channel, route in route_args]
+        if args.duplex and len(translators) == 2:
+            # route_args tartibi qat'iy: [0]=INCOMING (eshitish), [1]=OUTGOING
+            # (gapirish). Eshitish tarjimasi karnayda yangrayotganda gapirish
+            # mikrofoni gate bilan yopiladi — aks holda o'z tarjimamiz qayta
+            # tarjima bo'lib meetingga ketardi.
+            incoming_translator, outgoing_translator = translators
+            outgoing_translator.capture_gate = CaptureGate(
+                lambda: incoming_translator.player
+            )
         loop = asyncio.get_running_loop()
 
         def stop_all() -> None:

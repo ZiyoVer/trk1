@@ -352,6 +352,19 @@ class AudioPlayer:
         self.stream.start()
         self.thread.start()
 
+    def has_audio(self) -> bool:
+        """Hali ijro etilmagan (yoki ijro etilayotgan) tarjima audio bormi.
+
+        Qulfsiz, taxminiy o'qish — duplex feedback-gate uchun ishlatiladi va
+        PortAudio capture callback'ida chaqiriladi, shuning uchun kutish
+        (lock) mumkin emas. GIL ostida int/len o'qish xavfsiz.
+        """
+        return (
+            self.queued_bytes > 0
+            or self.pending_source_bytes > 0
+            or len(self.output_buffer) > 0
+        )
+
     def play(self, pcm_24khz_mono: bytes) -> None:
         with self.queue_lock:
             maximum = self.profile.maximum_backlog_ms * self.SOURCE_BYTES_PER_MS
