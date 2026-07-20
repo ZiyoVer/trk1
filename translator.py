@@ -82,12 +82,27 @@ def translation_instruction(args: argparse.Namespace) -> str:
     )
 
 
+def input_transcription_config(args: argparse.Namespace) -> types.AudioTranscriptionConfig:
+    """Manba tili aniq tanlangan bo'lsa modelga til ishorasi beriladi.
+
+    Ishorasiz o'zbek nutqi rus/tatar deb aniqlanardi ("bir ikki test" ->
+    "Бер ике тест") va tarjima sifati tushardi. "Avtomatik" tanlansa
+    ishora yubormaymiz — model o'zi aniqlaydi (aralash tilli meeting).
+    """
+    code = LANGUAGE_CODES.get(args.source_language)
+    if args.source_language == "auto" or not code:
+        return types.AudioTranscriptionConfig()
+    return types.AudioTranscriptionConfig(
+        language_hints=types.LanguageHints(language_codes=[code])
+    )
+
+
 def build_live_config(args: argparse.Namespace) -> types.LiveConnectConfig:
     """Build the documented continuous Live Translate configuration."""
 
     return types.LiveConnectConfig(
         response_modalities=["AUDIO"],
-        input_audio_transcription=types.AudioTranscriptionConfig(),
+        input_audio_transcription=input_transcription_config(args),
         output_audio_transcription=types.AudioTranscriptionConfig(),
         translation_config=types.TranslationConfig(
             target_language_code=args.target_language,
