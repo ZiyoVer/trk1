@@ -18,6 +18,17 @@ from pathlib import Path
 
 
 if "--engine" in sys.argv:
+    # Windows'da QProcess bergan quvur lokal kod sahifasida ochiladi
+    # (rus tizimida cp1251) va birinchi "✓" belgisi UnicodeEncodeError
+    # bilan dvigatelni yiqitadi. UTF-8 ga o'tkazamiz, iloji bo'lmasa
+    # xatoli belgilarni almashtiramiz.
+    for _stream_name in ("stdout", "stderr"):
+        _stream = getattr(sys, _stream_name, None)
+        if _stream is not None:
+            try:
+                _stream.reconfigure(encoding="utf-8", errors="replace")
+            except Exception:
+                pass
     # A windowed PyInstaller child can start without valid stdout/stderr file
     # descriptors. The GUI consumes this mirrored log, so attach it first and
     # never depend on a fragile QProcess pipe for engine status.
@@ -34,11 +45,19 @@ if "--engine" in sys.argv:
 
             def write(self, data: str) -> int:
                 self.mirror.write(data)
-                return self.stream.write(data)
+                try:
+                    return self.stream.write(data)
+                except (UnicodeEncodeError, ValueError, OSError):
+                    # Quvur yopilgan yoki belgini kodlay olmadi — log fayli
+                    # asosiy manba, dvigatel shu sababdan to'xtamasin.
+                    return len(data)
 
             def flush(self) -> None:
                 self.mirror.flush()
-                self.stream.flush()
+                try:
+                    self.stream.flush()
+                except (ValueError, OSError):
+                    pass
 
         sys.stdout = log_file if sys.stdout is None else _Tee(sys.stdout, log_file)
         sys.stderr = log_file if sys.stderr is None else _Tee(sys.stderr, log_file)
@@ -1848,6 +1867,8 @@ class TranslatorWindow(QWidget):
         environment = QProcessEnvironment.systemEnvironment()
         environment.insert("GOOGLE_API_KEY", self.api_key)
         environment.insert("PYTHONUNBUFFERED", "1")
+        # Windows: bola jarayon quvurni lokal kod sahifasida ochmasin.
+        environment.insert("PYTHONIOENCODING", "utf-8:replace")
         self.engine_log_path.parent.mkdir(parents=True, exist_ok=True)
         # Oldingi sessiya logini saqlab qolamiz: muammo yuz bergach
         # foydalanuvchi ko'pincha ilovani qayta ishga tushiradi va
@@ -2303,12 +2324,21 @@ def setup_app_logging() -> Path:
 
         def write(self, data: str) -> int:
             self.mirror.write(data)
-            return self.stream.write(data) if self.stream else len(data)
+            if not self.stream:
+                return len(data)
+            try:
+                return self.stream.write(data)
+            except (UnicodeEncodeError, ValueError, OSError):
+                return len(data)
 
         def flush(self) -> None:
             self.mirror.flush()
-            if self.stream:
+            if not self.stream:
+                return
+            try:
                 self.stream.flush()
+            except (ValueError, OSError):
+                pass
 
     sys.stdout = log_file if sys.stdout is None else _Tee(sys.stdout, log_file)
     sys.stderr = log_file if sys.stderr is None else _Tee(sys.stderr, log_file)
