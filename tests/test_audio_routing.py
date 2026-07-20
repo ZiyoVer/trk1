@@ -1,5 +1,7 @@
 import unittest
 
+import audio
+
 from audio_routing import (
     AudioEndpoint,
     DuplexRoutes,
@@ -71,6 +73,39 @@ class DuplexRouteTests(unittest.TestCase):
                 )
             )
 
+
+
+
+class AliasOutputTests(unittest.TestCase):
+    """Windows'dagi 'yo'naltirgich' qurilmalar avtomatik tanlanmasin.
+
+    Jonli Windows logi (2026-07-20): output 'Microsoft Sound Mapper -
+    Output' tanlangan; u tizim defaultiga ishora qiladi va meeting ovozi
+    uchun default kabelga qo'yilgani sabab tarjima kirish kabeliga
+    qaytib, bitta gap cheksiz takrorlangan.
+    """
+
+    def test_windows_alias_devices_are_recognized(self) -> None:
+        for name in (
+            "Microsoft Sound Mapper - Output",
+            "Primary Sound Driver",
+            "Primary Sound Capture Driver",
+        ):
+            self.assertTrue(audio.is_alias_output(name), name)
+
+    def test_real_devices_are_not_aliases(self) -> None:
+        for name in (
+            "Mi Monitor (NVIDIA High Definition Audio)",
+            "MacBook Air Speakers",
+            "Realtek Digital Output",
+        ):
+            self.assertFalse(audio.is_alias_output(name), name)
+
+    def test_virtual_cables_are_not_physical_outputs(self) -> None:
+        for name in ("CABLE Input (VB-Audio Virtual Cable)", "BlackHole 2ch"):
+            self.assertFalse(
+                audio.is_physical_output({"name": name, "max_output_channels": 16}), name
+            )
 
 if __name__ == "__main__":
     unittest.main()

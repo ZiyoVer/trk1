@@ -15,6 +15,7 @@ import sounddevice as sd
 from audiotsm import wsola
 from audiotsm.io.array import ArrayReader, ArrayWriter
 
+from audio_routing import is_virtual_device
 from playback_profiles import PlaybackProfile, playback_profile as get_playback_profile
 
 
@@ -125,6 +126,35 @@ def auto_input_device(query: str | None) -> DeviceChoice:
     return find_device("BlackHole 2ch", "input")
 
 
+# Windows'dagi "yo'naltirgich" qurilmalar: bular haqiqiy karnay emas, joriy
+# TIZIM DEFAULTIGA ishora qiladi. Meeting ovozini ushlash uchun default
+# chiqish odatda virtual kabelga qo'yiladi — natijada tarjima kirish
+# kabeliga qaytib tushib, ilova o'z ovozini qayta tarjima qila boshlaydi
+# (jonli Windows logida bitta gap cheksiz takrorlangan).
+ALIAS_OUTPUT_MARKERS = (
+    "sound mapper",
+    "primary sound driver",
+    "primary sound capture",
+)
+
+
+def is_alias_output(name: str) -> bool:
+    folded = name.casefold()
+    return any(marker in folded for marker in ALIAS_OUTPUT_MARKERS)
+
+
+def is_physical_output(device: dict) -> bool:
+    """Tarjima chiqishi uchun yaroqli FIZIK output qurilmami?
+
+    Virtual kabellar yagona manba — audio_routing.VIRTUAL_MARKERS — bo'yicha
+    chiqariladi (qo'lda yozilgan ro'yxat CABLE-A/B kabi endpointlarni
+    o'tkazib yuborardi).
+    """
+    return int(device["max_output_channels"]) > 0 and not is_virtual_device(
+        _device_name(device)
+    )
+
+
 def auto_output_device(query: str | None) -> DeviceChoice:
     if query:
         return find_device(query, "output")
@@ -133,35 +163,39 @@ def auto_output_device(query: str | None) -> DeviceChoice:
     default_output = int(sd.default.device[1])
     if 0 <= default_output < len(devices):
         device = devices[default_output]
-        name = _device_name(device)
-        lowered = name.casefold()
-        if (
-            int(device["max_output_channels"]) > 0
-            and "blackhole" not in lowered
-            and "cable input" not in lowered
-        ):
+        if is_physical_output(device) and not is_alias_output(_device_name(device)):
             return find_device(str(default_output), "output")
 
-    priorities = ("headphone", "airpods", "speaker", "built-in", "display")
+    priorities = (
+        "headphone",
+        "airpods",
+        "headset",
+        "speaker",
+        "built-in",
+        "monitor",
+        "display",
+        "realtek",
+        "nvidia",
+    )
     for keyword in priorities:
         for index, device in enumerate(devices):
+            name = _device_name(device)
             if (
-                int(device["max_output_channels"]) > 0
-                and "blackhole" not in _device_name(device).casefold()
-                and "cable input" not in _device_name(device).casefold()
-                and keyword in _device_name(device).casefold()
+                is_physical_output(device)
+                and not is_alias_output(name)
+                and keyword in name.casefold()
             ):
                 return find_device(str(index), "output")
 
     for index, device in enumerate(devices):
-        lowered = _device_name(device).casefold()
-        if (
-            int(device["max_output_channels"]) > 0
-            and "blackhole" not in lowered
-            and "cable input" not in lowered
+        if is_physical_output(devices[index]) and not is_alias_output(
+            _device_name(devices[index])
         ):
             return find_device(str(index), "output")
-    raise RuntimeError("BlackHole bo‘lmagan fizik output qurilma topilmadi.")
+    raise RuntimeError(
+        "Bu kompyuterda tarjima ovozini chiqaradigan karnay/naushnik topilmadi. "
+        "Naushnik yoki karnay ulang (yoki chiqish qurilmasini qo‘lda tanlang)."
+    )
 
 
 class PCMConverter:
