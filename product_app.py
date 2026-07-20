@@ -808,7 +808,10 @@ class TranslatorWindow(QWidget):
         self._build_tray()
         self._sync_mode_ui(apply_devices=False)
         self._refresh_audio_devices()
-        self._heal_stale_system_audio()
+        # DIQQAT: tizim mikrofonini ishga tushganda AVTOMATIK tiklamaymiz.
+        # U virtual kabelda qolgani Zoom'ning "Same as System" rejimi bilan
+        # hech narsa tanlamasdan ishlashini ta'minlaydi (O'ktamning ish
+        # oqimi). Kerak bo'lsa menyu panelidan qo'lda tiklanadi.
         self._set_controls(running=False)
 
     # ------------------------------------------------------------------
@@ -882,6 +885,13 @@ class TranslatorWindow(QWidget):
         self.tray_monitor_action.toggled.connect(self._toggle_monitor)
         logs_action = menu.addAction("Loglarni yig‘ish (ZIP)")
         logs_action.triggered.connect(self.export_logs)
+        if platform.system() == "Darwin":
+            restore_mic_action = menu.addAction("Tizim mikrofonini tiklash")
+            restore_mic_action.setToolTip(
+                "Boshqa ilovalarda mikrofon jim bo'lsa: tizim mikrofonini "
+                "virtual kabeldan fizik mikrofonga qaytaradi."
+            )
+            restore_mic_action.triggered.connect(self._restore_physical_microphone)
         menu.addSeparator()
         show_action = menu.addAction("Oynani ko‘rsatish")
         show_action.triggered.connect(self._show_window)
@@ -1219,9 +1229,11 @@ class TranslatorWindow(QWidget):
             )
             pair = self._current_pair()
             self.route_hint.setText(
-                f"⚠️  ZOOM/MEET SOZLAMASI SHART: Microphone → “{meeting_microphone}” "
-                "(yoki “Same as System”). Aks holda suhbatdoshlar tarjimani emas, "
-                f"sizning {language_caption(pair.source)} ovozingizni eshitadi."
+                f"Siz {language_caption(pair.source)} gapirasiz — meetingdagilar "
+                f"{language_caption(pair.target)} eshitadi. Zoom/Meet mikrofoni: "
+                f"“Same as System” (avtomatik) yoki “{meeting_microphone}”. "
+                "Agar ular sizning xom ovozingizni eshitsa — Zoom shu ikkisidan "
+                "birini tanlamagan."
             )
         elif virtual_input and not virtual_output:
             self.route_hint.setText(
@@ -2189,12 +2201,13 @@ class TranslatorWindow(QWidget):
                     return device.name
         return devices[0].name if devices else ""
 
-    def _heal_stale_system_audio(self) -> None:
-        """Crash'dan keyin tizim mikrofoni virtual kabelda qolib ketishi mumkin.
+    def _restore_physical_microphone(self) -> None:
+        """Tizim mikrofonini virtual kabeldan fizik mikrofonga qaytaradi.
 
-        Bunda Zoom "Same as System" bilan hech kimni eshitmaydi va aybdor
-        ilova emasdek ko'rinadi. Ishga tushganda (tarjima ishlamayotganda)
-        holatni tekshirib fizik mikrofonga qaytaramiz.
+        QO'LDA chaqiriladi (menyu panel). Avtomatik qilmaymiz: kabelda
+        qolgani Zoom "Same as System" bilan hech narsa tanlamasdan
+        ishlashini ta'minlaydi. Lekin tarjimon o'chiq bo'lganda boshqa
+        ilovalarda mikrofon jim bo'ladi — o'shanda shu tugma yordam beradi.
         """
         if platform.system() != "Darwin" or self.process is not None:
             return
