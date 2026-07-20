@@ -128,6 +128,7 @@ from licensing import (
 from system_audio import (
     InputDevice,
     OutputDevice,
+    default_input as system_default_input,
     route_input_to,
     route_output_to,
     set_default_input,
@@ -778,6 +779,7 @@ class TranslatorWindow(QWidget):
         self._build_tray()
         self._sync_mode_ui(apply_devices=False)
         self._refresh_audio_devices()
+        self._heal_stale_system_audio()
         self._set_controls(running=False)
 
     # ------------------------------------------------------------------
@@ -2062,6 +2064,40 @@ class TranslatorWindow(QWidget):
         # the remote gateway is temporarily unavailable; keep the UI alive and
         # surface a waiting state until a later connection succeeds.
         self.connection_timer.start(30_000)
+
+    def _heal_stale_system_audio(self) -> None:
+        """Crash'dan keyin tizim mikrofoni virtual kabelda qolib ketishi mumkin.
+
+        Bunda Zoom "Same as System" bilan hech kimni eshitmaydi va aybdor
+        ilova emasdek ko'rinadi. Ishga tushganda (tarjima ishlamayotganda)
+        holatni tekshirib fizik mikrofonga qaytaramiz.
+        """
+        if platform.system() != "Darwin" or self.process is not None:
+            return
+        try:
+            current = system_default_input()
+            if not is_virtual_device(current.name):
+                return
+            physical = next(
+                (
+                    device
+                    for device in available_devices("input")
+                    if not is_virtual_device(device.name)
+                ),
+                None,
+            )
+            if physical is None:
+                return
+            # DIQQAT: available_devices() PortAudio indeksini beradi, CoreAudio
+            # device_id emas — ularni aralashtirsa boshqa qurilma tanlanadi.
+            # route_input_to() nom bo'yicha CoreAudio'dan qidiradi.
+            route_input_to(physical.name)
+            self.route_hint.setText(
+                f"Tizim mikrofoni «{current.name}» dan «{physical.name}» ga qaytarildi."
+            )
+        except Exception:
+            # Tiklash ixtiyoriy qulaylik — xatosi ilovani to'xtatmasin.
+            pass
 
     def _restore_system_audio(self) -> None:
         previous_output = self.previous_system_output
