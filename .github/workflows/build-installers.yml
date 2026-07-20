@@ -1,0 +1,38 @@
+name: Build desktop installers
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m venv .venv
+      - run: .venv/bin/pip install -r requirements-product.txt
+      - run: chmod +x build_product_macos.sh && ./build_product_macos.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LiveTranslator-macOS
+          path: installer/macos/*.pkg
+
+  windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: choco install innosetup -y
+      - shell: powershell
+        run: .\build_product_windows.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LiveTranslator-Windows
+          path: installer/windows/*.exe

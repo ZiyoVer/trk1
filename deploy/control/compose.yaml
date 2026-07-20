@@ -1,0 +1,40 @@
+services:
+  control:
+    build:
+      context: ../..
+      dockerfile: deploy/control/Dockerfile
+    environment:
+      CONTROL_ADMIN_TOKEN: ${CONTROL_ADMIN_TOKEN:?set CONTROL_ADMIN_TOKEN}
+      CONTROL_SIGNING_SECRET: ${CONTROL_SIGNING_SECRET:?set CONTROL_SIGNING_SECRET}
+    volumes:
+      - control-data:/data
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+
+  caddy:
+    image: caddy:2-alpine
+    environment:
+      CONTROL_DOMAIN: ${CONTROL_DOMAIN:?set CONTROL_DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      control:
+        condition: service_healthy
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  control-data:
+  caddy-data:
+  caddy-config:

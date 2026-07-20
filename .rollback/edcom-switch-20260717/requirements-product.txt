@@ -1,0 +1,4 @@
+-r requirements.txt
+keyring==25.6.0
+PyInstaller==6.14.2
+PySide6==6.9.1
