@@ -962,8 +962,8 @@ class TranslatorWindow(QWidget):
         self._set_combo_code(self.target_language_select, code)
 
     def _tray_open_settings(self) -> None:
-        # Modal dialog ko'rinadigan oyna ustida ochilishi kerak.
-        self._show_window()
+        # Oynani ochmasdan to'g'ridan-to'g'ri sozlama dialogini ko'rsatamiz
+        # (menyu-panel rejimi: asosiy oyna umuman ochilmaydi).
         self.edit_settings()
 
     def _tray_activated(self, reason) -> None:  # noqa: ANN001
@@ -1179,6 +1179,12 @@ class TranslatorWindow(QWidget):
 
     def edit_settings(self, _checked: bool = False, required: bool = False) -> None:
         dialog = SettingsDialog(self, self.api_key, self.control_url, self.license_key)
+        # Ilova Dock'da ko'rinmaydi (menyu-panel rejimi) — dialog o'zi
+        # oldinga chiqmasa, boshqa oynalar ortida ko'rinmay qolardi.
+        dialog.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
+        dialog.show()
+        dialog.raise_()
+        dialog.activateWindow()
         if dialog.exec() != QDialog.DialogCode.Accepted:
             if required:
                 self._set_status("API KEY KERAK", "#ef4444")
@@ -2589,9 +2595,23 @@ def run_gui() -> int:
     # Tarjima ishlayotganda oyna yopilsa ilova menyu panelida yashaydi.
     app.setQuitOnLastWindowClosed(False)
     window = TranslatorWindow()
-    activate_filter = _ActivateFilter(window)
-    app.installEventFilter(activate_filter)
-    window.show()
+    # macOS: sof menyu-panel rejimi — asosiy oyna ochilmaydi, hamma
+    # boshqaruv tepadagi belgidan. Subtitr kerak bo'lsa "Oynani
+    # ko'rsatish" bilan ochiladi. Windows'da oyna odatdagidek ko'rinadi.
+    menu_bar_mode = platform.system() == "Darwin"
+    if menu_bar_mode:
+        window.hide()
+        if window.tray is not None:
+            window.tray.showMessage(
+                APP_NAME,
+                "Ishga tushdi — yuqoridagi belgidan boshqaring.",
+                QSystemTrayIcon.MessageIcon.Information,
+                3500,
+            )
+    else:
+        activate_filter = _ActivateFilter(window)
+        app.installEventFilter(activate_filter)
+        window.show()
     if auto_start:
         QTimer.singleShot(1_200, window.start_translator)
     return app.exec()
