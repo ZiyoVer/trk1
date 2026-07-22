@@ -17,6 +17,7 @@ from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 
+import numpy as np
 import sounddevice as sd
 
 from audio import (
@@ -130,6 +131,52 @@ def build_live_config(args: argparse.Namespace) -> types.LiveConnectConfig:
     )
 
 
+class SilenceGate:
+    """Ovoz-aniqlagich (VAD): jimlik/shovqinda modelga CHINAKAM sukunat yuboradi.
+
+    Muammo: model uzluksiz oqim kutadi. Jim paytda mikrofonning shovqin
+    poli (nafas, xona shovqini) modelga "noaniq past ovoz" bo'lib boradi
+    va model uni nutq deb "gap to'qib" chiqaradi (hallutsinatsiya).
+
+    Yechim: har bo'lakning RMS energiyasini o'lchaymiz. Nutq bo'lsa —
+    o'zini yuboramiz. Tasdiqlangan jimlikda — nol (raqamli sukunat)
+    yuboramiz: oqim uzilmaydi, lekin model to'qishga narsa topmaydi.
+    HANGOVER — nutq tugagach qisqa vaqt haqiqiy audioni davom ettiradi,
+    so'z dumini kesmaslik uchun.
+    """
+
+    def __init__(self, threshold_rms: int, hangover_ms: int = 600,
+                 clock=time.monotonic):  # noqa: ANN001
+        self.threshold = max(1, threshold_rms)
+        self.hangover_s = hangover_ms / 1000.0
+        self._clock = clock
+        self._last_voice = 0.0
+        self._warmup_until = 0.0
+
+    @staticmethod
+    def _rms(pcm16: bytes) -> float:
+        if not pcm16:
+            return 0.0
+        samples = np.frombuffer(pcm16, dtype=np.int16).astype(np.float32)
+        if samples.size == 0:
+            return 0.0
+        return float(np.sqrt(np.mean(samples * samples)))
+
+    def process(self, pcm16: bytes) -> bytes:
+        now = self._clock()
+        if self._warmup_until == 0.0:
+            # Boshlanishda 0.4s haqiqiy audio o'tsin (ulanish, birinchi so'z).
+            self._warmup_until = now + 0.4
+            self._last_voice = now
+        rms = self._rms(pcm16)
+        if rms >= self.threshold or now < self._warmup_until:
+            self._last_voice = now
+            return pcm16
+        if now - self._last_voice < self.hangover_s:
+            return pcm16  # so'z dumi
+        return b"\x00" * len(pcm16)  # tasdiqlangan jimlik -> nol
+
+
 class CaptureGate:
     """Yarim-duplex himoya: "Ikkalasi" rejimida eshitish kanali tarjima
     OVOZINI karnayda ijro qilayotgan paytda gapirish kanalining mikrofonini
@@ -214,6 +261,14 @@ class Translator:
         self.capture_gate: CaptureGate | None = None
         self.gated_chunks = 0
         self._last_gate_log = 0.0
+        # VAD: jimlikda modelga sukunat yuborib hallutsinatsiyani to'xtatadi.
+        # --silence-threshold 0 bo'lsa o'chiriladi (agar kerak bo'lsa).
+        self.silence_gate: SilenceGate | None = None
+        if getattr(args, "silence_threshold", 0) > 0:
+            self.silence_gate = SilenceGate(
+                threshold_rms=args.silence_threshold,
+                hangover_ms=getattr(args, "silence_ms", 600) or 600,
+            )
         # DIQQAT: nazorat ovozi uchun o'z-o'zini gate qilish MUMKIN EMAS.
         # Bir kanalning o'zi ijro qilayotganda mikrofonini yopsa, gapirish
         # imkoni butunlay yo'qoladi (v0.7.4 regressiyasi: 1600+ chunk
@@ -241,6 +296,8 @@ class Translator:
                     f"(feedback himoyasi, {self.gated_chunks} chunk)."
                 )
             return
+        if self.silence_gate is not None:
+            data = self.silence_gate.process(data)
         if self.audio_queue.full():
             with suppress(asyncio.QueueEmpty):
                 self.audio_queue.get_nowait()
@@ -647,14 +704,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--silence-threshold",
         type=int,
-        default=50,
-        help="PCM RMS level treated as speech/audio",
+        default=300,
+        help="RMS ostidagi audio JIMLIK deb sanaladi (VAD). 0 = o'chiq. "
+        "Jim paytda modelga sukunat yuborilib gap-to'qish (hallutsinatsiya) "
+        "to'xtatiladi.",
     )
     parser.add_argument(
         "--silence-ms",
         type=int,
-        default=280,
-        help="Short pause that closes the current streaming translation chunk",
+        default=600,
+        help="Nutq tugagach shuncha ms haqiqiy audio davom etadi (so'z dumi)",
     )
     parser.add_argument("--model", default=MODEL)
     return parser
