@@ -158,15 +158,30 @@ namespace LTAudio {
         vista.SetDefaultEndpoint(id, 0); vista.SetDefaultEndpoint(id, 1); vista.SetDefaultEndpoint(id, 2);
       }
     }
+    // Ko'p-kanalli spatial variant ("CABLE In 16ch", "... 8ch"). Bunday
+    // endpoint kabelning STANDART "CABLE Output"iga ULANMAYDI — video unga
+    // o'ynasa, ilova jimlikni eshitadi. Standart 2ch "CABLE Input" kerak.
+    static bool IsSpatialVariant(string n) {
+      if (n == null) return false;
+      return System.Text.RegularExpressions.Regex.IsMatch(
+        n.ToLowerInvariant(), @"\b\d+\s*ch\b");
+    }
     public static string SetDefaultByName(int flow, string match, bool physicalOnly) {
       var en = (IMMDeviceEnumerator)(new MMDeviceEnumerator());
       IMMDeviceCollection col; en.EnumAudioEndpoints(flow, 1 /*ACTIVE*/, out col);
       int n; col.GetCount(out n);
-      for (int i = 0; i < n; i++) {
-        IMMDevice d; col.Item(i, out d);
-        string name = DeviceName(d); string id; d.GetId(out id);
-        bool nameOk = NameMatches(name, match);
-        if (nameOk && (!physicalOnly || !IsVirtual(name))) { SetById(id); return name; }
+      // IKKI O'TISH: avval STANDART endpoint (kanal-son qo'shimchasisiz),
+      // keyingina spatial variant. Aks holda "CABLE In 16ch" birinchi
+      // topilib, video kabelga tushmay, tarjima umuman ishlamasdi.
+      for (int pass = 0; pass < 2; pass++) {
+        for (int i = 0; i < n; i++) {
+          IMMDevice d; col.Item(i, out d);
+          string name = DeviceName(d); string id; d.GetId(out id);
+          if (!NameMatches(name, match)) continue;
+          if (physicalOnly && IsVirtual(name)) continue;
+          if (pass == 0 && IsSpatialVariant(name)) continue;
+          SetById(id); return name;
+        }
       }
       return null;
     }
