@@ -170,7 +170,7 @@ from system_audio import (
 
 
 APP_NAME = "Live Translator"
-APP_VERSION = "0.9.19"
+APP_VERSION = "0.9.20"
 KEYRING_SERVICE = "local.live-translator"
 KEYRING_ACCOUNT = "edcom-api-key"
 KEYRING_LICENSE_ACCOUNT = "license-key"
@@ -2132,6 +2132,30 @@ class TranslatorWindow(QWidget):
                 validate_duplex_routes(routes)
                 incoming_pair = self.mode_pairs["incoming"]
                 outgoing_pair = self.mode_pairs["outgoing"]
+                # ROUTING AVVAL: win_prev_render (routing'dan oldingi haqiqiy
+                # karnay) shu yerda saqlanadi va incoming tarjima chiqishiga
+                # kerak bo'ladi.
+                incoming_output_arg = str(routes.incoming_output.index)
+                if platform.system() == "Darwin":
+                    self.previous_system_output = route_output_to(
+                        routes.incoming_input.name
+                    )
+                    self.previous_system_input = route_input_to(
+                        routes.outgoing_output.name
+                    )
+                elif platform.system() == "Windows":
+                    # Zoom speaker -> kiruvchi kabel; Zoom mic -> chiquvchi kabel.
+                    self._win_apply_routing(
+                        self._win_cable_match(routes.incoming_input.name),
+                        self._win_cable_match(routes.outgoing_output.name),
+                    )
+                    # Incoming tarjima (UZ) haqiqiy karnayga NOM bilan
+                    # chiqadi (tinglashdagi kabi): default endi kabel bo'lgani
+                    # uchun index/avto-tanlash bo'sh quloqchin uyasi yoki
+                    # kabelni tanlab, foydalanuvchi eshitmasdi.
+                    prev = getattr(self, "win_prev_render", "")
+                    if prev and not is_virtual_device(prev):
+                        incoming_output_arg = prev
                 process_arguments.extend(
                     [
                         "--duplex",
@@ -2142,7 +2166,7 @@ class TranslatorWindow(QWidget):
                         "--incoming-input-device",
                         str(routes.incoming_input.index),
                         "--incoming-output-device",
-                        str(routes.incoming_output.index),
+                        incoming_output_arg,
                         "--outgoing-source-language",
                         outgoing_pair.source,
                         "--outgoing-target-language",
@@ -2169,19 +2193,6 @@ class TranslatorWindow(QWidget):
                         routes.outgoing_output.name,
                     ),
                 ]
-                if platform.system() == "Darwin":
-                    self.previous_system_output = route_output_to(
-                        routes.incoming_input.name
-                    )
-                    self.previous_system_input = route_input_to(
-                        routes.outgoing_output.name
-                    )
-                elif platform.system() == "Windows":
-                    # Zoom speaker -> kiruvchi kabel; Zoom mic -> chiquvchi kabel.
-                    self._win_apply_routing(
-                        self._win_cable_match(routes.incoming_input.name),
-                        self._win_cable_match(routes.outgoing_output.name),
-                    )
             else:
                 input_id = int(self.input_device.currentData())
                 output_id = int(self.output_device.currentData())
