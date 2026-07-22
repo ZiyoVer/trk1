@@ -12,6 +12,11 @@ VIRTUAL_MARKERS = (
     "vb-audio virtual cable",
     "cable-a",
     "cable-b",
+    # VB-Audio Hi-Fi Cable (duplex'ning ikkinchi kabeli). Uning ikkala
+    # tomoni ham shu marker'ga tushadi: "Hi-Fi Cable Output" (yozib
+    # olish) va "Speakers/Динамики (VB-Audio Hi-Fi Cable)" (ijro).
+    "hi-fi cable",
+    "vb-audio hi-fi",
 )
 
 
@@ -40,6 +45,12 @@ def virtual_device_family(name: str) -> str:
     folded = " ".join(name.casefold().split())
     if "blackhole" in folded:
         return folded
+    # Hi-Fi Cable — asosiy VB-CABLE'dan ALOHIDA oila. "cable output"
+    # tekshiruvidan OLDIN qaraladi, aks holda uning nomi ("Hi-Fi Cable
+    # Output") "vb-cable"ga qo'shilib ketardi (duplex ikkalasini bir xil
+    # deb hisoblab rad qilardi).
+    if "hi-fi" in folded or "hifi" in folded:
+        return "vb-hifi-cable"
     if "cable-a" in folded:
         return "vb-cable-a"
     if "cable-b" in folded:

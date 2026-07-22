@@ -166,5 +166,51 @@ class PreferredPhysicalOutputTests(unittest.TestCase):
         self.assertIsNone(audio.preferred_physical_output())
 
 
+
+
+class HiFiCableTests(unittest.TestCase):
+    """Duplex'ning ikkinchi kabeli — Hi-Fi Cable (real Windows testda topildi).
+
+    Ilova uni asosiy VB-CABLE bilan bir xil oila deb hisoblab, chiqish
+    tomonini ("Speakers/Динамики") virtual emas deb tanirdi — natijada
+    'kerakli audio qurilma topilmadi'.
+    """
+
+    HIFI_NAMES = [
+        "Hi-Fi Cable Output (VB-Audio Hi-Fi Cable)",
+        "Speakers (VB-Audio Hi-Fi Cable)",
+        "Динамики (2- VB-Audio Hi-Fi Cable)",
+    ]
+
+    def test_all_hifi_endpoints_are_virtual(self) -> None:
+        from audio_routing import is_virtual_device
+        for name in self.HIFI_NAMES:
+            self.assertTrue(is_virtual_device(name), name)
+
+    def test_hifi_is_distinct_family_from_vb_cable(self) -> None:
+        from audio_routing import virtual_device_family
+        vb = virtual_device_family("CABLE Output (VB-Audio Virtual Cable)")
+        for name in self.HIFI_NAMES:
+            self.assertNotEqual(virtual_device_family(name), vb, name)
+
+    def test_duplex_vb_cable_plus_hifi_is_allowed(self) -> None:
+        from audio_routing import is_forbidden_route
+        self.assertFalse(
+            is_forbidden_route(
+                "CABLE Output (VB-Audio Virtual Cable)",
+                "Speakers (VB-Audio Hi-Fi Cable)",
+                2,
+                4,
+            )
+        )
+
+    def test_hifi_playback_not_treated_as_physical(self) -> None:
+        import audio
+        for name in ("Speakers (VB-Audio Hi-Fi Cable)",
+                     "Динамики (2- VB-Audio Hi-Fi Cable)"):
+            self.assertFalse(
+                audio.is_physical_output({"name": name, "max_output_channels": 8}), name
+            )
+
 if __name__ == "__main__":
     unittest.main()

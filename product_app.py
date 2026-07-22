@@ -1490,6 +1490,10 @@ class TranslatorWindow(QWidget):
                 preferred_words=(
                     "blackhole 16ch",
                     "blackhole 64ch",
+                    # Windows: duplex'ning ikkinchi chiqishi — Hi-Fi Cable'ning
+                    # IJRO tomoni ("Speakers/Динамики (VB-Audio Hi-Fi Cable)").
+                    "hi-fi cable",
+                    "vb-audio hi-fi",
                     "cable-b input",
                     "cable-a input",
                 ),
@@ -1500,9 +1504,16 @@ class TranslatorWindow(QWidget):
         drivers = self._virtual_driver_names(refresh=self.process is None)
         driver = drivers[0] if drivers else None
         virtual_families = {virtual_device_family(name) for name in drivers}
+        is_windows = platform.system() == "Windows"
+        base_family = "vb-cable" if is_windows else "blackhole 2ch"
+        have_base = any(base_family in fam for fam in virtual_families)
         duplex_missing = self._current_mode() == "duplex" and len(virtual_families) < 2
-        if duplex_missing:
-            self.driver_variant = "16ch" if platform.system() == "Darwin" else "second"
+        # DIQQAT: agar ASOSIY kabel (VB-CABLE / BlackHole 2ch) umuman yo'q
+        # bo'lsa — duplex bo'lsa ham AVVAL uni o'rnatamiz. Aks holda ilova
+        # to'g'ridan-to'g'ri ikkinchi kabelni o'rnatib, asosiysini o'tkazib
+        # yuborardi (real Windows testda aynan shunday bo'ldi).
+        if duplex_missing and have_base:
+            self.driver_variant = "16ch" if not is_windows else "second"
         else:
             self.driver_variant = "2ch"
         self.driver_row.setVisible(driver is None or duplex_missing)
