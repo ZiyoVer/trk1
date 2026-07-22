@@ -41,3 +41,31 @@ class LanguageConfigTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class UiI18nTests(unittest.TestCase):
+    def setUp(self) -> None:
+        import ui_i18n
+        self.ui_i18n = ui_i18n
+        self._prev = ui_i18n.current_language()
+
+    def tearDown(self) -> None:
+        self.ui_i18n.set_language(self._prev)
+
+    def test_uzbek_source_passes_through(self) -> None:
+        self.ui_i18n.set_language("uz")
+        self.assertEqual(self.ui_i18n.t("Tinglash"), "Tinglash")
+
+    def test_russian_and_english(self) -> None:
+        self.ui_i18n.set_language("ru")
+        self.assertEqual(self.ui_i18n.t("Tinglash"), "Слушать")
+        self.ui_i18n.set_language("en")
+        self.assertEqual(self.ui_i18n.t("Tinglash"), "Listen")
+
+    def test_unknown_string_falls_back_to_source(self) -> None:
+        self.ui_i18n.set_language("ru")
+        self.assertEqual(self.ui_i18n.t("__yo'q__"), "__yo'q__")
+
+    def test_format_args(self) -> None:
+        self.ui_i18n.set_language("en")
+        self.assertEqual(self.ui_i18n.t("Manba tili: {}", "UZ"), "Source language: UZ")

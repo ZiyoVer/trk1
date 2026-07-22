@@ -124,6 +124,8 @@ from audio import (
     is_alias_output,
     preferred_physical_output,
 )
+import ui_i18n
+from ui_i18n import t
 from audio_routing import (
     AudioEndpoint,
     DuplexRoutes,
@@ -396,6 +398,12 @@ class TranslatorWindow(QWidget):
             "OUTGOING": {"source": "", "target": ""},
         }
         self.settings = QSettings("Charon", APP_NAME)
+        # Interfeys tili: saqlangan tanlov yoki OT tili (uz/ru/en).
+        ui_i18n.set_language(
+            ui_i18n.initial_language(
+                str(self.settings.value("ui/language", "")) or None
+            )
+        )
         # "Gapirish"da tarjima virtual kabelga ketadi; nazorat ovozi uni
         # naushnikda ham eshittiradi (default: yoqiq).
         self.monitor_enabled = (
@@ -875,20 +883,20 @@ class TranslatorWindow(QWidget):
         self.tray.setIcon(self._tray_pixmap())
         self.tray.setToolTip(APP_NAME)
         menu = QMenu()
-        self.tray_status_action = menu.addAction("Tayyor")
+        self.tray_status_action = menu.addAction(t("Tayyor"))
         self.tray_status_action.setEnabled(False)
         menu.addSeparator()
         # Oynani qaytarish — eng tepada: ilova LSUIElement (Dock'da
         # ko'rinmaydi), shuning uchun yashirilgan oynani faqat shu yerdan
         # yoki tray belgisini bosib qaytarish mumkin.
-        top_show_action = menu.addAction("Oynani ko‘rsatish")
+        top_show_action = menu.addAction(t("Oynani ko‘rsatish"))
         top_show_action.triggered.connect(self._show_window)
         menu.addSeparator()
         mode_group = QActionGroup(self)
         mode_group.setExclusive(True)
         self.tray_mode_actions: list[QAction] = []
         for index, mode in enumerate(APP_MODES):
-            action = menu.addAction(mode.title)
+            action = menu.addAction(t(mode.title))
             action.setCheckable(True)
             mode_group.addAction(action)
             action.triggered.connect(
@@ -899,7 +907,7 @@ class TranslatorWindow(QWidget):
         # Tillar — oynani ochmasdan almashtirish uchun.
         self.tray_source_actions: list[QAction] = []
         self.tray_target_actions: list[QAction] = []
-        self.tray_source_menu = menu.addMenu("Manba tili")
+        self.tray_source_menu = menu.addMenu(t("Manba tili"))
         source_group = QActionGroup(self)
         source_group.setExclusive(True)
         for language in SOURCE_LANGUAGES:
@@ -910,7 +918,7 @@ class TranslatorWindow(QWidget):
                 lambda _checked=False, code=language.code: self._tray_source_selected(code)
             )
             self.tray_source_actions.append(action)
-        self.tray_target_menu = menu.addMenu("Tarjima tili")
+        self.tray_target_menu = menu.addMenu(t("Tarjima tili"))
         target_group = QActionGroup(self)
         target_group.setExclusive(True)
         for language in TARGET_LANGUAGES:
@@ -922,28 +930,42 @@ class TranslatorWindow(QWidget):
             )
             self.tray_target_actions.append(action)
         menu.addSeparator()
-        self.tray_start_action = menu.addAction("Tarjimani boshlash")
+        self.tray_start_action = menu.addAction(t("Tarjimani boshlash"))
         self.tray_start_action.triggered.connect(self.start_translator)
-        self.tray_stop_action = menu.addAction("Tarjimani to‘xtatish")
+        self.tray_stop_action = menu.addAction(t("Tarjimani to‘xtatish"))
         self.tray_stop_action.triggered.connect(self.stop_translator)
         menu.addSeparator()
-        self.tray_monitor_action = menu.addAction("Tarjimani o‘zim ham eshitay")
+        self.tray_monitor_action = menu.addAction(t("Tarjimani o‘zim ham eshitay"))
         self.tray_monitor_action.setCheckable(True)
         self.tray_monitor_action.setChecked(self.monitor_enabled)
         self.tray_monitor_action.toggled.connect(self._toggle_monitor)
-        logs_action = menu.addAction("Loglarni yig‘ish (ZIP)")
+        logs_action = menu.addAction(t("Loglarni yig‘ish (ZIP)"))
         logs_action.triggered.connect(self.export_logs)
         if platform.system() == "Darwin":
-            restore_mic_action = menu.addAction("Tizim mikrofonini tiklash")
+            restore_mic_action = menu.addAction(t("Tizim mikrofonini tiklash"))
             restore_mic_action.setToolTip(
                 "Boshqa ilovalarda mikrofon jim bo'lsa: tizim mikrofonini "
                 "virtual kabeldan fizik mikrofonga qaytaradi."
             )
             restore_mic_action.triggered.connect(self._restore_physical_microphone)
         menu.addSeparator()
-        settings_action = menu.addAction("Sozlamalar…")
+        # Interfeys tili — avtomatik aniqlanadi, shu yerdan o'zgartiriladi.
+        self.tray_ui_lang_menu = menu.addMenu(t("Interfeys tili"))
+        ui_lang_group = QActionGroup(self)
+        ui_lang_group.setExclusive(True)
+        self.tray_ui_lang_actions: list[QAction] = []
+        for code in ui_i18n.SUPPORTED:
+            action = self.tray_ui_lang_menu.addAction(ui_i18n.LANGUAGE_NAMES[code])
+            action.setCheckable(True)
+            action.setChecked(code == ui_i18n.current_language())
+            ui_lang_group.addAction(action)
+            action.triggered.connect(
+                lambda _checked=False, c=code: self._change_ui_language(c)
+            )
+            self.tray_ui_lang_actions.append(action)
+        settings_action = menu.addAction(t("Sozlamalar…"))
         settings_action.triggered.connect(self._tray_open_settings)
-        quit_action = menu.addAction("Chiqish")
+        quit_action = menu.addAction(t("Chiqish"))
         quit_action.triggered.connect(self._quit_from_tray)
         self.tray_menu = menu
         self.tray.setContextMenu(menu)
@@ -963,6 +985,23 @@ class TranslatorWindow(QWidget):
             self._sync_tray()
             return
         self._set_combo_code(self.target_language_select, code)
+
+    def _change_ui_language(self, code: str) -> None:
+        """Interfeys tilini almashtiradi va menyuni qayta quradi."""
+        ui_i18n.set_language(code)
+        self.settings.setValue("ui/language", code)
+        self.settings.sync()
+        # Menyu bir marta quriladi — tilni yangilash uchun qaytadan quramiz.
+        if self.tray is not None:
+            self.tray.hide()
+            self._build_tray()
+        if self.tray is not None:
+            self.tray.showMessage(
+                APP_NAME,
+                ui_i18n.LANGUAGE_NAMES[code],
+                QSystemTrayIcon.MessageIcon.Information,
+                2000,
+            )
 
     def _tray_open_settings(self) -> None:
         # Oynani ochmasdan to'g'ridan-to'g'ri sozlama dialogini ko'rsatamiz
@@ -985,7 +1024,7 @@ class TranslatorWindow(QWidget):
             if self.tray:
                 self.tray.showMessage(
                     APP_NAME,
-                    "Rejimni almashtirish uchun avval tarjimani to‘xtating.",
+                    t("Rejimni almashtirish uchun avval tarjimani to‘xtating."),
                     QSystemTrayIcon.MessageIcon.Information,
                     4000,
                 )
@@ -1008,7 +1047,7 @@ class TranslatorWindow(QWidget):
             self.minimize_hint_shown = True
             tray.showMessage(
                 APP_NAME,
-                "Oyna yashirildi — menyu panelidagi belgidan qaytariladi.",
+                t("Oyna yashirildi — menyu panelidagi belgidan qaytariladi."),
                 QSystemTrayIcon.MessageIcon.Information,
                 4000,
             )
@@ -1064,7 +1103,7 @@ class TranslatorWindow(QWidget):
         if self.process is not None and self.tray is not None:
             self.tray.showMessage(
                 APP_NAME,
-                "Keyingi ishga tushirishda qo‘llanadi.",
+                t("Keyingi ishga tushirishda qo‘llanadi."),
                 QSystemTrayIcon.MessageIcon.Information,
                 3000,
             )
@@ -1095,8 +1134,8 @@ class TranslatorWindow(QWidget):
         for action, language in zip(self.tray_target_actions, TARGET_LANGUAGES):
             action.setChecked(language.code == pair.target)
             action.setEnabled(not active)
-        self.tray_source_menu.setTitle(f"Manba tili: {language_caption(pair.source)}")
-        self.tray_target_menu.setTitle(f"Tarjima tili: {language_caption(pair.target)}")
+        self.tray_source_menu.setTitle(t("Manba tili: {}", language_caption(pair.source)))
+        self.tray_target_menu.setTitle(t("Tarjima tili: {}", language_caption(pair.target)))
         self.tray_start_action.setEnabled(not active and ready)
         self.tray_stop_action.setEnabled(active)
 
@@ -1790,14 +1829,15 @@ class TranslatorWindow(QWidget):
         self._sync_tray(running=running, ready=ready)
 
     def _set_status(self, text: str, color: str) -> None:
-        self.status.setText(f"●  {text}")
+        shown = t(text)  # lug'atda bo'lsa joriy tilga o'giradi
+        self.status.setText(f"●  {shown}")
         self.status.setStyleSheet(f"color: {color}; font-size: 10px; font-weight: 700;")
         status_action = getattr(self, "tray_status_action", None)
         if status_action is not None:
-            status_action.setText(text.capitalize())
+            status_action.setText(shown.capitalize())
         tray = getattr(self, "tray", None)
         if tray is not None:
-            tray.setToolTip(f"{APP_NAME} — {text.capitalize()}")
+            tray.setToolTip(f"{APP_NAME} — {shown.capitalize()}")
 
     def start_translator(self) -> None:
         if self.process is not None or self.license_check_in_progress:
@@ -2646,7 +2686,7 @@ def run_gui() -> int:
         if window.tray is not None:
             window.tray.showMessage(
                 APP_NAME,
-                "Ishga tushdi — yuqoridagi belgidan boshqaring.",
+                t("Ishga tushdi — yuqoridagi belgidan boshqaring."),
                 QSystemTrayIcon.MessageIcon.Information,
                 3500,
             )
