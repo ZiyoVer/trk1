@@ -33,9 +33,6 @@ Set-Content -Encoding UTF8 $RuntimeHook "import os`nos.environ.setdefault(`"LIVE
     product_app.py
 
 $AppFolder = Join-Path $Root "dist\product\Live Translator"
-# Drayver avto-o'rnatish skriptini app papkasiga qo'shamiz (Inno [Run]
-# shu yerdan chaqiradi).
-Copy-Item (Join-Path $Root "packaging\windows\install_drivers.ps1") $AppFolder -Force
 & .venv-product\Scripts\python.exe audit_artifact.py $AppFolder
 
 $SignTool = $null

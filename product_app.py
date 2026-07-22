@@ -182,6 +182,10 @@ BLACKHOLE_16CH_URL = "https://existential.audio/downloads/BlackHole16ch-0.7.1.pk
 BLACKHOLE_16CH_SHA256 = "57254e2f76cd40db7f3f715238b1a2cb2bd08819d38abf4087f2944f71a3641a"
 VBCABLE_URL = "https://download.vb-audio.com/Download_CABLE/VBCABLE_Driver_Pack45.zip"
 VBCABLE_SHA256 = "b950e39f01af1d04ea623c8f6d8eb9b6ea5c477c637295fabf20631c85116bfb"
+# Duplex uchun IKKINCHI mustaqil kabel — VB-Audio Hi-Fi Cable (end-user
+# uchun BEPUL, A+B donationware'ga muqobil). Real Windows'da tekshirilgan.
+HIFI_CABLE_URL = "https://download.vb-audio.com/Download_CABLE/HiFiCableAsioBridgeSetup_v1007.zip"
+HIFI_CABLE_SHA256 = "3ecf204bfd8579d36bb918f9856eb1eaddd49c75146f5e8a8f59dcb8375ae89a"
 BLACKHOLE_DRIVER_PATH = Path("/Library/Audio/Plug-Ins/HAL/BlackHole2ch.driver")
 BLACKHOLE_16CH_DRIVER_PATH = Path("/Library/Audio/Plug-Ins/HAL/BlackHole16ch.driver")
 
@@ -1545,16 +1549,8 @@ class TranslatorWindow(QWidget):
         self._set_controls(running=self.process is not None)
 
     def install_driver(self) -> None:
-        if platform.system() == "Windows" and self.driver_variant == "second":
-            QDesktopServices.openUrl(QUrl("https://vb-audio.com/Cable/"))
-            QMessageBox.information(
-                self,
-                "Ikkinchi virtual audio cable",
-                "IKKALASI rejimiga base VB-CABLE’dan tashqari alohida "
-                "VB-CABLE A yoki B kerak. Rasmiy VB-Audio sahifasi ochildi; "
-                "o‘rnatib Windows’ni restart qiling.",
-            )
-            return
+        # Windows'da ikkinchi kabel (duplex) ham AVTOMATIK o'rnatiladi —
+        # bepul Hi-Fi Cable. Veb-saytga yo'naltirmaymiz.
         self.driver_button.setEnabled(False)
         self.driver_button.setText("YUKLANMOQDA…")
         threading.Thread(target=self._download_driver, daemon=True).start()
@@ -1573,14 +1569,33 @@ class TranslatorWindow(QWidget):
                 self.driver_signals.ready.emit(str(path))
                 return
             if platform.system() == "Windows":
-                archive = Path(tempfile.gettempdir()) / "VBCABLE_Driver_Pack45.zip"
-                folder = Path(tempfile.gettempdir()) / "LiveTranslator-VBCABLE"
-                self._download_verified(VBCABLE_URL, archive, VBCABLE_SHA256)
-                shutil.rmtree(folder, ignore_errors=True)
-                folder.mkdir(parents=True)
-                with zipfile.ZipFile(archive) as package:
-                    package.extractall(folder)
-                setup = folder / ("VBCABLE_Setup_x64.exe" if sys.maxsize > 2**32 else "VBCABLE_Setup.exe")
+                is64 = sys.maxsize > 2**32
+                if self.driver_variant == "second":
+                    # Duplex'ning ikkinchi kabeli — bepul Hi-Fi Cable.
+                    archive = Path(tempfile.gettempdir()) / "HiFiCable.zip"
+                    folder = Path(tempfile.gettempdir()) / "LiveTranslator-HiFiCable"
+                    self._download_verified(HIFI_CABLE_URL, archive, HIFI_CABLE_SHA256)
+                    shutil.rmtree(folder, ignore_errors=True)
+                    folder.mkdir(parents=True)
+                    with zipfile.ZipFile(archive) as package:
+                        package.extractall(folder)
+                    candidates = [
+                        folder / "HiFiCableAsioBridgeSetup_x64.exe",
+                        folder / "HiFiCableAsioBridgeSetup.exe",
+                    ]
+                    setup = next((c for c in candidates if c.exists()), None)
+                    if setup is None:
+                        found = list(folder.rglob("*Setup*.exe"))
+                        setup = found[0] if found else candidates[-1]
+                else:
+                    archive = Path(tempfile.gettempdir()) / "VBCABLE_Driver_Pack45.zip"
+                    folder = Path(tempfile.gettempdir()) / "LiveTranslator-VBCABLE"
+                    self._download_verified(VBCABLE_URL, archive, VBCABLE_SHA256)
+                    shutil.rmtree(folder, ignore_errors=True)
+                    folder.mkdir(parents=True)
+                    with zipfile.ZipFile(archive) as package:
+                        package.extractall(folder)
+                    setup = folder / ("VBCABLE_Setup_x64.exe" if is64 else "VBCABLE_Setup.exe")
                 import ctypes
 
                 # "-i -h": VB-Audio'ning jimgina o'rnatish rejimi — foydalanuvchi
@@ -1625,10 +1640,16 @@ class TranslatorWindow(QWidget):
                 "qayta ishga tushiring. Restart’dan keyin Live Translator BlackHole’ni "
                 "avtomatik topadi."
             )
+        elif getattr(self, "driver_variant", "") == "second":
+            instructions = (
+                "Ikkinchi audio kabel (Hi-Fi Cable) o‘rnatildi. IKKALASI rejimi "
+                "ishlashi uchun Windows’ni bir marta qayta ishga tushiring — "
+                "keyin hammasi avtomatik."
+            )
         else:
             instructions = (
-                "Rasmiy VB-CABLE installer ochildi. Install Driver ni bosing, "
-                "administrator ruxsatini tasdiqlang va Windows’ni qayta ishga tushiring."
+                "Virtual audio kabel o‘rnatildi. Endi tarjimani boshlashingiz "
+                "mumkin. (Kabel ko‘rinmasa Windows’ni bir marta qayta ishga tushiring.)"
             )
         QMessageBox.information(
             self,
