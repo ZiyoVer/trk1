@@ -20,15 +20,43 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 namespace LTAudio {
+  // DIQQAT: har metodda [PreserveSig] SHART (aks holda .NET yashirin
+  // [retval] qo'shib vtable chaqiruvини siljitadi va XOTIRA BUZILADI —
+  // 0xC0000374). VA ikki xil vtable bor:
+  //   * IPolicyConfigVista (568b9108) — Vista/Win10/11, ResetDeviceFormat'SIZ,
+  //     SetDefaultEndpoint 10-metod.
+  //   * IPolicyConfig (f8679f50) — Win7, ResetDeviceFormat BILAN, 11-metod.
+  // Noto'g'ri variant chaqirilsa slot mos kelmay crash bo'ladi. Shuning
+  // uchun ikkalasini ham e'lon qilamiz va OS qo'llab-quvvatlaganini
+  // ("as" orqali) tanlaymiz.
+  [Guid("568b9108-44bb-40b4-a6ee-901400770e28"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  public interface IPolicyConfigVista {
+    [PreserveSig] int GetMixFormat(string d, IntPtr f);
+    [PreserveSig] int GetDeviceFormat(string d, int b, IntPtr f);
+    [PreserveSig] int SetDeviceFormat(string d, IntPtr a, IntPtr b);
+    [PreserveSig] int GetProcessingPeriod(string d, int b, IntPtr a, IntPtr c);
+    [PreserveSig] int SetProcessingPeriod(string d, IntPtr p);
+    [PreserveSig] int GetShareMode(string d, IntPtr m);
+    [PreserveSig] int SetShareMode(string d, IntPtr m);
+    [PreserveSig] int GetPropertyValue(string d, IntPtr k, IntPtr v);
+    [PreserveSig] int SetPropertyValue(string d, IntPtr k, IntPtr v);
+    [PreserveSig] int SetDefaultEndpoint([MarshalAs(UnmanagedType.LPWStr)] string d, uint role);
+    [PreserveSig] int SetEndpointVisibility(string d, int v);
+  }
   [Guid("f8679f50-850a-41cf-9c72-430f290290c8"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
   public interface IPolicyConfig {
-    int GetMixFormat(string d, IntPtr f); int GetDeviceFormat(string d, bool b, IntPtr f);
-    int ResetDeviceFormat(string d); int SetDeviceFormat(string d, IntPtr a, IntPtr b);
-    int GetProcessingPeriod(string d, bool b, IntPtr a, IntPtr c); int SetProcessingPeriod(string d, IntPtr p);
-    int GetShareMode(string d, IntPtr m); int SetShareMode(string d, IntPtr m);
-    int GetPropertyValue(string d, bool b, ref PKEY k, IntPtr v);
-    int SetPropertyValue(string d, bool b, ref PKEY k, IntPtr v);
-    int SetDefaultEndpoint(string d, uint role); int SetEndpointVisibility(string d, bool v);
+    [PreserveSig] int GetMixFormat(string d, IntPtr f);
+    [PreserveSig] int GetDeviceFormat(string d, int b, IntPtr f);
+    [PreserveSig] int ResetDeviceFormat(string d);
+    [PreserveSig] int SetDeviceFormat(string d, IntPtr a, IntPtr b);
+    [PreserveSig] int GetProcessingPeriod(string d, int b, IntPtr a, IntPtr c);
+    [PreserveSig] int SetProcessingPeriod(string d, IntPtr p);
+    [PreserveSig] int GetShareMode(string d, IntPtr m);
+    [PreserveSig] int SetShareMode(string d, IntPtr m);
+    [PreserveSig] int GetPropertyValue(string d, IntPtr k, IntPtr v);
+    [PreserveSig] int SetPropertyValue(string d, IntPtr k, IntPtr v);
+    [PreserveSig] int SetDefaultEndpoint([MarshalAs(UnmanagedType.LPWStr)] string d, uint role);
+    [PreserveSig] int SetEndpointVisibility(string d, int v);
   }
   [StructLayout(LayoutKind.Sequential)] public struct PKEY { public Guid fmtid; public int pid; }
   [ComImport, Guid("870af99c-171d-4f9e-af0d-e63df40c2bc9")] public class CPolicyConfigClient {}
@@ -44,7 +72,10 @@ namespace LTAudio {
   public interface IMMDevice {
     int Activate(ref Guid id, int ctx, IntPtr p, out IntPtr o);
     int OpenPropertyStore(int access, out IPropertyStore store);
-    int GetId(out string id); int GetState(out int st);
+    // DIQQAT: LPWStr SHART. Default marshaling (BSTR) — GetId CoTaskMemAlloc
+    // string qaytaradi, .NET uni SysFreeString bilan bo'shatib XOTIRANI
+    // BUZADI (0xC0000374). Shu bitta atribut butun routing crash'ining sababi.
+    int GetId([MarshalAs(UnmanagedType.LPWStr)] out string id); int GetState(out int st);
   }
   [Guid("886d8eeb-8cf2-4446-8d02-cdba1dbdcf99"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
   public interface IPropertyStore {
@@ -110,8 +141,22 @@ namespace LTAudio {
       return DeviceName(d) ?? "";
     }
     static void SetById(string id) {
-      var pc = (IPolicyConfig)(new CPolicyConfigClient());
-      pc.SetDefaultEndpoint(id, 0); pc.SetDefaultEndpoint(id, 1); pc.SetDefaultEndpoint(id, 2);
+      // OS qo'llab-quvvatlaган variantни tanlaymiz. "as" QueryInterface
+      // qiladi: Vista (Win10/11) topilsa null bo'lmaydi; aks holda (Win7)
+      // legacy'ga tushamiz. Noto'g'ri vtable chaqirilmagani uchun crash yo'q.
+      object client = new CPolicyConfigClient();
+      // Legacy (f8679f50) BIRINCHI — real Win10/11 mashinada aynan shu
+      // qo'llab-quvvatlanadi va sinovdan o'tgan. Vista (568b9108) faqat
+      // legacy bo'lmagan tizimlar uchun zaxira.
+      var legacy = client as IPolicyConfig;
+      if (legacy != null) {
+        legacy.SetDefaultEndpoint(id, 0); legacy.SetDefaultEndpoint(id, 1); legacy.SetDefaultEndpoint(id, 2);
+        return;
+      }
+      var vista = client as IPolicyConfigVista;
+      if (vista != null) {
+        vista.SetDefaultEndpoint(id, 0); vista.SetDefaultEndpoint(id, 1); vista.SetDefaultEndpoint(id, 2);
+      }
     }
     public static string SetDefaultByName(int flow, string match, bool physicalOnly) {
       var en = (IMMDeviceEnumerator)(new MMDeviceEnumerator());
