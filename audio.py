@@ -132,9 +132,17 @@ def auto_input_device(query: str | None) -> DeviceChoice:
 # kabeliga qaytib tushib, ilova o'z ovozini qayta tarjima qila boshlaydi
 # (jonli Windows logida bitta gap cheksiz takrorlangan).
 ALIAS_OUTPUT_MARKERS = (
+    # Inglizcha Windows
     "sound mapper",
     "primary sound driver",
     "primary sound capture",
+    # Ruscha Windows (masofaviy testda topildi 2026-07-22): tizim tili
+    # o'zgarsa bu yo'naltirgichlar boshqa nomlanadi va filtrdan o'tib
+    # ketardi — natijada cheksiz takror halqasi.
+    "переназначение звуков",  # Sound Mapper
+    "первичный звуковой драйвер",  # Primary Sound Driver
+    "первичный драйвер записи",  # Primary Sound Capture Driver
+    "устройство сопоставления",  # Sound Mapper (muqobil tarjima)
 )
 
 

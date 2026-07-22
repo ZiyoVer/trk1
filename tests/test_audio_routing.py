@@ -90,6 +90,9 @@ class AliasOutputTests(unittest.TestCase):
             "Microsoft Sound Mapper - Output",
             "Primary Sound Driver",
             "Primary Sound Capture Driver",
+            # Ruscha Windows (masofaviy testda topildi)
+            "\u041f\u0435\u0440\u0435\u043d\u0430\u0437\u043d\u0430\u0447\u0435\u043d\u0438\u0435 \u0437\u0432\u0443\u043a\u043e\u0432\u044b\u0445 \u0443\u0441\u0442\u0440. - Output",
+            "\u041f\u0435\u0440\u0432\u0438\u0447\u043d\u044b\u0439 \u0437\u0432\u0443\u043a\u043e\u0432\u043e\u0439 \u0434\u0440\u0430\u0439\u0432\u0435\u0440",
         ):
             self.assertTrue(audio.is_alias_output(name), name)
 
