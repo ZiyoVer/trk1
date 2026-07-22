@@ -54,7 +54,7 @@ if (-not (Test-Path $Iscc)) {
 }
 & $Iscc packaging\windows\LiveTranslator.iss
 
-$Installer = Join-Path $Root "installer\windows\LiveTranslator-Setup-0.5.0.exe"
+$Installer = Join-Path $Root "installer\windows\LiveTranslator-Setup-0.9.15.exe"
 if ($SignTool) {
     & $SignTool sign /sha1 $env:WINDOWS_SIGN_CERT_SHA1 /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 $Installer
 }

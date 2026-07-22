@@ -66,6 +66,43 @@ namespace LTAudio {
       return n.Contains("cable") || n.Contains("hi-fi") || n.Contains("hifi")
           || n.Contains("vb-audio") || n.Contains("sound mapper") || n.Contains("переназначение");
     }
+    // Bir xil VB-Audio drayverining nechanchi nusxasi ("2- VB-Audio ...").
+    static int InstanceNum(string n) {
+      if (n == null) return 1;
+      var m = System.Text.RegularExpressions.Regex.Match(
+        n.ToLowerInvariant(), @"(\d+)-\s*vb-audio");
+      int v; if (m.Success && int.TryParse(m.Groups[1].Value, out v)) return v;
+      return 1;
+    }
+    static bool IsHiFi(string n) {
+      if (n == null) return false; n = n.ToLowerInvariant();
+      return n.Contains("hi-fi") || n.Contains("hifi");
+    }
+    static bool IsBaseCable(string n) {
+      if (n == null) return false; n = n.ToLowerInvariant();
+      return !IsHiFi(n) && (n.Contains("cable input") || n.Contains("cable output")
+          || n.Contains("vb-audio virtual cable") || n.Contains("vb-cable"));
+    }
+    static bool IsHeadphone(string n) {
+      if (n == null) return false; n = n.ToLowerInvariant();
+      return n.Contains("headphone") || n.Contains("headset")
+          || n.Contains("наушник") || n.Contains("гарнитур");
+    }
+    // "hifi:N" / "vbcable:N" — o'sha oiladagi ANIQ nusxa. Aks holda oddiy
+    // quyi-satr moslash (eski xatti-harakat).
+    static bool NameMatches(string name, string match) {
+      if (name == null) return false;
+      if (string.IsNullOrEmpty(match)) return true;
+      if (match.StartsWith("hifi:")) {
+        int inst; if (!int.TryParse(match.Substring(5), out inst)) inst = 1;
+        return IsHiFi(name) && InstanceNum(name) == inst;
+      }
+      if (match.StartsWith("vbcable:")) {
+        int inst; if (!int.TryParse(match.Substring(8), out inst)) inst = 1;
+        return IsBaseCable(name) && InstanceNum(name) == inst;
+      }
+      return name.ToLowerInvariant().Contains(match.ToLowerInvariant());
+    }
     public static string GetDefaultName(int flow) {
       var en = (IMMDeviceEnumerator)(new MMDeviceEnumerator());
       IMMDevice d;
@@ -83,9 +120,25 @@ namespace LTAudio {
       for (int i = 0; i < n; i++) {
         IMMDevice d; col.Item(i, out d);
         string name = DeviceName(d); string id; d.GetId(out id);
-        bool nameOk = string.IsNullOrEmpty(match)
-          ? true : (name != null && name.ToLowerInvariant().Contains(match.ToLowerInvariant()));
+        bool nameOk = NameMatches(name, match);
         if (nameOk && (!physicalOnly || !IsVirtual(name))) { SetById(id); return name; }
+      }
+      return null;
+    }
+    // Fizik chiqishga qaytarish: avval naushnik/garnitura, keyin istalgan
+    // fizik qurilma (Stop'da ovozni odam eshitadigan joyga qaytaramiz).
+    public static string SetDefaultPhysicalPreferred(int flow) {
+      var en = (IMMDeviceEnumerator)(new MMDeviceEnumerator());
+      IMMDeviceCollection col; en.EnumAudioEndpoints(flow, 1 /*ACTIVE*/, out col);
+      int n; col.GetCount(out n);
+      for (int pass = 0; pass < 2; pass++) {
+        for (int i = 0; i < n; i++) {
+          IMMDevice d; col.Item(i, out d);
+          string name = DeviceName(d); string id; d.GetId(out id);
+          if (IsVirtual(name)) continue;
+          if (pass == 0 && !IsHeadphone(name)) continue;
+          SetById(id); return name;
+        }
       }
       return null;
     }
@@ -101,9 +154,12 @@ switch ($Action) {
   "setrender"  { $r = [LTAudio.Cfg]::SetDefaultByName(0, $Name, $false); if ($r) { "OK: $r" } else { "NOT_FOUND" } }
   "setcapture" { $r = [LTAudio.Cfg]::SetDefaultByName(1, $Name, $false); if ($r) { "OK: $r" } else { "NOT_FOUND" } }
   "restore" {
-    $r = [LTAudio.Cfg]::SetDefaultByName(0, "", $true)
+    # Chiqish: naushnik ulangan bo'lsa o'shanga, aks holda fizik karnayga.
+    $r = [LTAudio.Cfg]::SetDefaultPhysicalPreferred(0)
     $c = [LTAudio.Cfg]::SetDefaultByName(1, "", $true)
     "render=" + $r; "capture=" + $c
   }
+  "restorerender"  { $r = [LTAudio.Cfg]::SetDefaultPhysicalPreferred(0); if ($r) { "OK: $r" } else { "NOT_FOUND" } }
+  "restorecapture" { $c = [LTAudio.Cfg]::SetDefaultByName(1, "", $true); if ($c) { "OK: $c" } else { "NOT_FOUND" } }
   default { "UNKNOWN_ACTION" }
 }

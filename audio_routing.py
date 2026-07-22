@@ -2,7 +2,20 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
+
+
+# Windows bir xil VB-Audio drayverini bir necha marta o'rnatganda ikkinchi
+# nusxani "2- VB-Audio Hi-Fi Cable" deb nomlaydi. Endpoint nomida bu raqam
+# qavs ichida turadi: "Hi-Fi Cable Output (2- VB-Audio ...)". Shu raqamni
+# ajratib olamiz — nusxalarni ALOHIDA kabel deb hisoblash uchun.
+_INSTANCE_RE = re.compile(r"(\d+)-\s*vb-audio")
+
+
+def _cable_instance(folded: str) -> str:
+    match = _INSTANCE_RE.search(folded)
+    return f"-{match.group(1)}" if match else ""
 
 
 VIRTUAL_MARKERS = (
@@ -48,15 +61,17 @@ def virtual_device_family(name: str) -> str:
     # Hi-Fi Cable — asosiy VB-CABLE'dan ALOHIDA oila. "cable output"
     # tekshiruvidan OLDIN qaraladi, aks holda uning nomi ("Hi-Fi Cable
     # Output") "vb-cable"ga qo'shilib ketardi (duplex ikkalasini bir xil
-    # deb hisoblab rad qilardi).
+    # deb hisoblab rad qilardi). Nusxa raqami (2-, 3-) oxiriga qo'shiladi,
+    # shunda "VB-Audio Hi-Fi Cable" va "2- VB-Audio Hi-Fi Cable" turli
+    # kabel deb qaraladi — ikkalasi rejimi ular bilan ishlashi uchun shart.
     if "hi-fi" in folded or "hifi" in folded:
-        return "vb-hifi-cable"
+        return "vb-hifi-cable" + _cable_instance(folded)
     if "cable-a" in folded:
         return "vb-cable-a"
     if "cable-b" in folded:
         return "vb-cable-b"
     if "cable input" in folded or "cable output" in folded or "vb-audio virtual cable" in folded:
-        return "vb-cable"
+        return "vb-cable" + _cable_instance(folded)
     return folded
 
 

@@ -439,6 +439,12 @@ class AudioPlayer:
         self.target_buffer_ms = self.profile.start_buffer_ms
         self.last_underflow_at = 0.0
         self.last_buffer_recovery_at = time.monotonic()
+        # Duplex feedback-gate uchun ishonchli "hozir karnayda ovoz chiqyapti"
+        # signali: chiqish callback'i haqiqiy (nol bo'lmagan) namuna yozgan
+        # oxirgi payt. Navbatdagi/pending baytlarga TAYANMAYMIZ — flush
+        # kelmay qolsa pending_source_bytes >0 qotib, gate mikrofonni abadiy
+        # yopib qo'yardi (v0.9.x two-way regressiyasi).
+        self.last_active_output = 0.0
         self.backlog_warning_emitted = False
         output_blocksize = max(1, self.output_rate * self.OUTPUT_CALLBACK_MS // 1000)
         self.stream = sd.RawOutputStream(
@@ -457,18 +463,23 @@ class AudioPlayer:
         self.stream.start()
         self.thread.start()
 
-    def has_audio(self) -> bool:
-        """Hali ijro etilmagan (yoki ijro etilayotgan) tarjima audio bormi.
+    # Karnayda ovoz "hozir chiqyapti" deb hisoblanadigan oyna. Chiqish
+    # callback'i har ~20ms da ishlaydi; 150ms qisqa uzilishlarni (buffer
+    # bir-ikki callback bo'sh qolishi) ko'paytirmasdan bartaraf qiladi.
+    ACTIVE_OUTPUT_WINDOW = 0.15
 
-        Qulfsiz, taxminiy o'qish — duplex feedback-gate uchun ishlatiladi va
-        PortAudio capture callback'ida chaqiriladi, shuning uchun kutish
-        (lock) mumkin emas. GIL ostida int/len o'qish xavfsiz.
-        """
-        return (
-            self.queued_bytes > 0
-            or self.pending_source_bytes > 0
-            or len(self.output_buffer) > 0
-        )
+    def has_audio(self) -> bool:
+        """Karnaydan HOZIR haqiqiy tarjima ovozi chiqyaptimi (taxminiy).
+
+        Duplex feedback-gate uchun. Faqat chiqish callback'i nol bo'lmagan
+        namuna yozgan oxirgi paytga qaraydi — navbatga/pending baytga EMAS.
+        Shu tufayli flush kelmay qolsa ham gate qotib qolmaydi: ovoz
+        to'xtashi bilan (~150ms) o'zini ochadi. Qulfsiz, GIL ostida float
+        o'qish xavfsiz (capture callback'idan chaqiriladi)."""
+        last = self.last_active_output
+        if last <= 0.0:
+            return False
+        return (time.monotonic() - last) < self.ACTIVE_OUTPUT_WINDOW
 
     def play(self, pcm_24khz_mono: bytes) -> None:
         with self.queue_lock:
@@ -680,6 +691,8 @@ class AudioPlayer:
             if available:
                 outdata[:available] = self.output_buffer[:available]
                 del self.output_buffer[:available]
+                # Haqiqiy ovoz chiqdi — feedback-gate uchun vaqt tamg'asi.
+                self.last_active_output = time.monotonic()
             if available < needed:
                 outdata[available:needed] = b"\0" * (needed - available)
                 if self.turn_end_requested:

@@ -94,6 +94,7 @@ from PySide6.QtGui import (
     QAction,
     QActionGroup,
     QColor,
+    QCursor,
     QDesktopServices,
     QIcon,
     QMouseEvent,
@@ -169,7 +170,7 @@ from system_audio import (
 
 
 APP_NAME = "Live Translator"
-APP_VERSION = "0.5.0"
+APP_VERSION = "0.9.15"
 KEYRING_SERVICE = "local.live-translator"
 KEYRING_ACCOUNT = "edcom-api-key"
 KEYRING_LICENSE_ACCOUNT = "license-key"
@@ -1041,7 +1042,19 @@ class TranslatorWindow(QWidget):
         self.edit_settings()
 
     def _tray_activated(self, reason) -> None:  # noqa: ANN001
-        """Tray belgisi bosilganda yashirilgan oynani qaytaradi."""
+        """Tray belgisi bosilganda nima bo'ladi.
+
+        Windows: belgini bosish asosiy oynani OCHMAYDI — faqat menyuni
+        ko'rsatadi. Asosiy oyna faqat o'rnatishdan keyingi ilk ishga
+        tushishda va menyudagi "Sozlamalar"/"Oynani ko'rsatish" orqali
+        ochiladi (foydalanuvchi talabi). macOS xatti-harakati o'zgarmaydi.
+        """
+        if platform.system() == "Windows":
+            if reason == QSystemTrayIcon.ActivationReason.Trigger and self.tray:
+                # Chap tugma bosilganda ham menyuni kursordan chiqaramiz
+                # (o'ng tugma menyusi bilan bir xil) — oyna chiqmaydi.
+                self.tray.contextMenu().popup(QCursor.pos())
+            return
         if reason in (
             QSystemTrayIcon.ActivationReason.Trigger,
             QSystemTrayIcon.ActivationReason.DoubleClick,
@@ -1736,12 +1749,20 @@ class TranslatorWindow(QWidget):
 
     @staticmethod
     def _win_cable_match(device_name: str) -> str:
-        """Qurilma nomidan tizim-default uchun mos qidiruv so'zi."""
+        """Qurilma nomidan tizim-default uchun ANIQ nusxa tokeni.
+
+        "hifi:N" / "vbcable:N" — N nusxa raqami (raqamsiz = 1). audio_config.ps1
+        buni o'sha oiladagi ANIQ nusxaga (masalan "2- VB-Audio Hi-Fi Cable")
+        moslaydi. Ilgari "hi-fi" degan qo'pol so'z ikkita Hi-Fi Cable'ni
+        ajrata olmasdi — ilova bir kabeldan o'qib, tizim boshqasiga
+        yo'naltirilib, tinglash umuman ishlamasdi."""
         fam = virtual_device_family(device_name)
-        if "hifi" in fam or "hi-fi" in device_name.casefold():
-            return "hi-fi"
-        if "vb-cable" in fam or "virtual cable" in device_name.casefold():
-            return "virtual cable"
+        if fam.startswith("vb-hifi-cable"):
+            inst = fam.rsplit("-", 1)[-1] if fam[-1].isdigit() else "1"
+            return f"hifi:{inst}"
+        if fam.startswith("vb-cable"):
+            inst = fam.rsplit("-", 1)[-1] if fam[-1].isdigit() else "1"
+            return f"vbcable:{inst}"
         return device_name
 
     def _win_apply_routing(self, render_match: str, capture_match: str) -> None:
@@ -1764,22 +1785,24 @@ class TranslatorWindow(QWidget):
             self._win_audio("setcapture", capture_match)
 
     def _win_restore_routing(self) -> None:
-        """Stop/chiqishda: saqlangan default'larni qaytaradi (fizik zaxira)."""
+        """Stop/chiqishda default qurilmalarni FIZIKga qaytaradi.
+
+        Chiqish (karnay): naushnik ulangan bo'lsa o'shanga, aks holda fizik
+        karnayga — foydalanuvchi talabi ("stop qilinganda realtek yoki
+        naushnik ulangan bo'lsa o'shanga qaytsin"). Shu sabab Start'dan
+        oldingi saqlangan default emas, HOZIRGI eng yaxshi fizik chiqish
+        tanlanadi (sessiya davomida naushnik ulangan bo'lishi mumkin).
+        Mikrofon esa Start'dan oldingi fizik default'ga (bo'lsa) qaytadi."""
         if platform.system() != "Windows":
             return
-        prev_render = getattr(self, "win_prev_render", "")
         prev_capture = getattr(self, "win_prev_capture", "")
-        restored = False
-        if prev_render and not is_virtual_device(prev_render):
-            self._win_audio("setrender", prev_render)
-            restored = True
+        # Karnay/naushnik — naushnik-afzal fizik chiqish.
+        self._win_audio("restorerender")
+        # Mikrofon — Start'dan oldingi fizik default, aks holda birinchi fizik.
         if prev_capture and not is_virtual_device(prev_capture):
             self._win_audio("setcapture", prev_capture)
-            restored = True
-        if not restored:
-            # Saqlangan default'ning o'zi kabel bo'lgan (yoki yo'q) —
-            # birinchi fizik qurilmaga qaytaramiz.
-            self._win_audio("restore")
+        else:
+            self._win_audio("restorecapture")
         self.win_prev_render = ""
         self.win_prev_capture = ""
 

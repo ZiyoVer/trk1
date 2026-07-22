@@ -1,4 +1,5 @@
 import struct
+import time
 import contextlib
 import io
 import queue
@@ -92,9 +93,43 @@ def player_without_audio_device(profile_code: str) -> AudioPlayer:
     player.target_buffer_ms = player.profile.start_buffer_ms
     player.last_underflow_at = 0.0
     player.last_buffer_recovery_at = 0.0
+    player.last_active_output = 0.0
     player.backlog_warning_emitted = False
     player.last_buffer_warning = ""
     return player
+
+
+class HasAudioGateSignalTests(unittest.TestCase):
+    """`has_audio()` — duplex feedback-gate signali. Faqat karnaydan HOZIR
+    ovoz chiqayotganini bildirishi kerak; navbatdagi/pending baytga
+    tayanmasligi kerak (aks holda flush kelmay qolsa gate mikrofonni abadiy
+    yopib qo'yardi — two-way "gapirish umuman ishlamaydi" regressiyasi)."""
+
+    def test_idle_player_reports_no_audio(self):
+        player = player_without_audio_device("balanced-smooth")
+        self.assertFalse(player.has_audio())
+
+    def test_reports_audio_right_after_real_output(self):
+        player = player_without_audio_device("balanced-smooth")
+        player.last_active_output = time.monotonic()
+        self.assertTrue(player.has_audio())
+
+    def test_self_releases_after_window(self):
+        player = player_without_audio_device("balanced-smooth")
+        player.last_active_output = time.monotonic() - (
+            AudioPlayer.ACTIVE_OUTPUT_WINDOW + 0.05
+        )
+        self.assertFalse(player.has_audio())
+
+    def test_queued_or_pending_alone_does_not_deafen_mic(self):
+        # ILDIZ SABAB testi: audio navbatda/pending turibdi, lekin karnayda
+        # hech narsa chiqmayapti (flush kelmagan). Gate OCHIQ bo'lishi kerak.
+        player = player_without_audio_device("balanced-smooth")
+        player.queued_bytes = 96_000
+        player.pending_source_bytes = 96_000
+        player.output_buffer = bytearray(b"\x01\0" * 48_000)
+        player.last_active_output = 0.0
+        self.assertFalse(player.has_audio())
 
 
 class AudioPlayerProfileTests(unittest.TestCase):

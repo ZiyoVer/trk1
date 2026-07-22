@@ -212,5 +212,59 @@ class HiFiCableTests(unittest.TestCase):
                 audio.is_physical_output({"name": name, "max_output_channels": 8}), name
             )
 
+    def test_two_hifi_cable_instances_are_distinct_families(self) -> None:
+        """Windows'da ikkita Hi-Fi Cable ("2- ...") ALOHIDA kabel bo'lishi
+        kerak — aks holda ikkalasi rejimi ikkalasini bitta deb rad qilardi
+        va tinglash noto'g'ri kabelga yo'naltirilardi."""
+        from audio_routing import virtual_device_family as fam
+        self.assertNotEqual(
+            fam("Hi-Fi Cable Output (VB-Audio Hi-Fi Cable)"),
+            fam("Hi-Fi Cable Output (2- VB-Audio Hi-Fi Cable)"),
+        )
+        # Bir kabelning yozib olish va ijro uchlari bir XIL oila.
+        self.assertEqual(
+            fam("Hi-Fi Cable Output (2- VB-Audio Hi-Fi Cable)"),
+            fam("Динамики (2- VB-Audio Hi-Fi Cable)"),
+        )
+        # Kesilgan (truncated) nom ham nusxani to'g'ri aniqlasin.
+        self.assertEqual(
+            fam("Hi-Fi Cable Output (2- VB-Audio"),
+            fam("Динамики (2- VB-Audio Hi-Fi Cable)"),
+        )
+
+    def test_duplex_accepts_two_hifi_cable_instances(self) -> None:
+        """Faqat Hi-Fi Cable o'rnatilgan (base VB-CABLE yo'q) mashinada
+        ikkalasi rejimi ikki nusxa bilan ishlashi kerak."""
+        from audio_routing import (
+            AudioEndpoint,
+            DuplexRoutes,
+            validate_duplex_routes,
+        )
+        validate_duplex_routes(
+            DuplexRoutes(
+                incoming_input=AudioEndpoint(2, "Hi-Fi Cable Output (2- VB-Audio Hi-Fi Cable)"),
+                incoming_output=AudioEndpoint(4, "Speaker (Realtek(R) Audio)"),
+                outgoing_input=AudioEndpoint(1, "Microphone Array (Realtek(R) Audio)"),
+                outgoing_output=AudioEndpoint(30, "Speakers (VB-Audio Hi-Fi Cable)"),
+            )
+        )
+
+    def test_duplex_rejects_same_hifi_instance_both_ends(self) -> None:
+        from audio_routing import (
+            AudioEndpoint,
+            DuplexRoutes,
+            validate_duplex_routes,
+        )
+        with self.assertRaises(ValueError):
+            validate_duplex_routes(
+                DuplexRoutes(
+                    incoming_input=AudioEndpoint(2, "Hi-Fi Cable Output (2- VB-Audio Hi-Fi Cable)"),
+                    incoming_output=AudioEndpoint(4, "Speaker (Realtek(R) Audio)"),
+                    outgoing_input=AudioEndpoint(1, "Microphone Array (Realtek(R) Audio)"),
+                    outgoing_output=AudioEndpoint(5, "Динамики (2- VB-Audio Hi-Fi Cable)"),
+                )
+            )
+
+
 if __name__ == "__main__":
     unittest.main()
