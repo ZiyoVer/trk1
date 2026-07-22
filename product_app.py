@@ -170,7 +170,7 @@ from system_audio import (
 
 
 APP_NAME = "Live Translator"
-APP_VERSION = "0.9.22"
+APP_VERSION = "0.9.23"
 KEYRING_SERVICE = "local.live-translator"
 KEYRING_ACCOUNT = "edcom-api-key"
 KEYRING_LICENSE_ACCOUNT = "license-key"
@@ -1754,8 +1754,18 @@ class TranslatorWindow(QWidget):
                 args, capture_output=True, text=True, timeout=30,
                 creationflags=creationflags,
             )
-            return (result.stdout or "").strip()
-        except Exception:
+            out = (result.stdout or "").strip()
+            err = (result.stderr or "").strip()
+            # Diagnostika: har bir routing amali app.log'ga yoziladi (Start
+            # va Stop'da aynan nima o'zgarayotganini ko'rish uchun).
+            print(
+                f"[ROUTING] {action} name={name!r} rc={result.returncode} "
+                f"out={out!r}" + (f" err={err[:200]!r}" if err else ""),
+                flush=True,
+            )
+            return out
+        except Exception as error:
+            print(f"[ROUTING] {action} name={name!r} EXCEPTION: {error}", flush=True)
             return ""
 
     @staticmethod
@@ -2410,6 +2420,11 @@ class TranslatorWindow(QWidget):
             return
         self.stop_requested = True
         self._set_status("TO‘XTATILMOQDA…", "#f59e0b")
+        # Ovoz qurilmalarini DARHOL fizikka qaytaramiz — jarayon tugashini
+        # (~6s) kutmasdan, foydalanuvchi videoni darhol eshitsin. Jarayon
+        # tugaganda ham yana bir bor tiklanadi (zararsiz).
+        if platform.system() == "Windows":
+            self._win_restore_routing()
         self.process.terminate()
         QTimer.singleShot(6000, self._force_stop)
 
