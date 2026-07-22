@@ -409,6 +409,9 @@ class TranslatorWindow(QWidget):
         self.engine_log_position = 0
         self.previous_system_output: OutputDevice | None = None
         self.previous_system_input: InputDevice | None = None
+        # Windows: Start'da saqlangan tizim default qurilmalari.
+        self.win_prev_render = ""
+        self.win_prev_capture = ""
         self.driver_install_prompted = False
         self.driver_variant = "2ch"
         self.source_caption = ""
@@ -1694,16 +1697,11 @@ class TranslatorWindow(QWidget):
                 4000,
             )
 
-    def restore_windows_default_speaker(self, match: str = "") -> str:
-        """Windows default karnayni FIZIK qurilmaga qaytaradi.
-
-        VB-CABLE/Hi-Fi drayverlari o'zlarini default karnay qilib qo'yadi —
-        natijada ovoz haqiqiy karnayga bormaydi. Bundlangan IPolicyConfig
-        skripti buni tuzatadi (ilovaning o'z sessiyasida ishlaydi).
-        """
+    def _win_audio(self, action: str, name: str = "") -> str:
+        """audio_config.ps1 ni chaqiradi (Windows default qurilma boshqaruvi)."""
         if platform.system() != "Windows":
             return ""
-        script = resource_path("restore_default_audio.ps1")
+        script = resource_path("audio_config.ps1")
         if not script.exists():
             return ""
         try:
@@ -1714,20 +1712,72 @@ class TranslatorWindow(QWidget):
                 "Bypass",
                 "-File",
                 str(script),
+                "-Action",
+                action,
             ]
-            if match:
-                args += ["-Match", match]
+            if name:
+                args += ["-Name", name]
             creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
             result = subprocess.run(
-                args,
-                capture_output=True,
-                text=True,
-                timeout=30,
+                args, capture_output=True, text=True, timeout=30,
                 creationflags=creationflags,
             )
             return (result.stdout or "").strip()
         except Exception:
             return ""
+
+    @staticmethod
+    def _win_cable_match(device_name: str) -> str:
+        """Qurilma nomidan tizim-default uchun mos qidiruv so'zi."""
+        fam = virtual_device_family(device_name)
+        if "hifi" in fam or "hi-fi" in device_name.casefold():
+            return "hi-fi"
+        if "vb-cable" in fam or "virtual cable" in device_name.casefold():
+            return "virtual cable"
+        return device_name
+
+    def _win_apply_routing(self, render_match: str, capture_match: str) -> None:
+        """Start'da: joriy default'larni SAQLAB, kabellarga o'tkazadi.
+
+        Shu tufayli Zoom/Meet 'Same as System' bilan hech narsa tanlamasdan
+        to'g'ri ishlaydi — foydalanuvchi qurilmaga tegmaydi.
+        """
+        if platform.system() != "Windows":
+            return
+        out = self._win_audio("getdefaults")
+        for line in out.splitlines():
+            if line.startswith("render="):
+                self.win_prev_render = line[len("render="):].strip()
+            elif line.startswith("capture="):
+                self.win_prev_capture = line[len("capture="):].strip()
+        if render_match:
+            self._win_audio("setrender", render_match)
+        if capture_match:
+            self._win_audio("setcapture", capture_match)
+
+    def _win_restore_routing(self) -> None:
+        """Stop/chiqishda: saqlangan default'larni qaytaradi (fizik zaxira)."""
+        if platform.system() != "Windows":
+            return
+        prev_render = getattr(self, "win_prev_render", "")
+        prev_capture = getattr(self, "win_prev_capture", "")
+        restored = False
+        if prev_render and not is_virtual_device(prev_render):
+            self._win_audio("setrender", prev_render)
+            restored = True
+        if prev_capture and not is_virtual_device(prev_capture):
+            self._win_audio("setcapture", prev_capture)
+            restored = True
+        if not restored:
+            # Saqlangan default'ning o'zi kabel bo'lgan (yoki yo'q) —
+            # birinchi fizik qurilmaga qaytaramiz.
+            self._win_audio("restore")
+        self.win_prev_render = ""
+        self.win_prev_capture = ""
+
+    def restore_windows_default_speaker(self, match: str = "") -> str:
+        """Default karnay/mikrofonni FIZIK qurilmaga qaytaradi (qo'lda tugma)."""
+        return self._win_audio("restore")
 
     def _driver_installer_ready(self, path: str) -> None:
         self.driver_button.setEnabled(True)
@@ -2080,6 +2130,12 @@ class TranslatorWindow(QWidget):
                     self.previous_system_input = route_input_to(
                         routes.outgoing_output.name
                     )
+                elif platform.system() == "Windows":
+                    # Zoom speaker -> kiruvchi kabel; Zoom mic -> chiquvchi kabel.
+                    self._win_apply_routing(
+                        self._win_cable_match(routes.incoming_input.name),
+                        self._win_cable_match(routes.outgoing_output.name),
+                    )
             else:
                 input_id = int(self.input_device.currentData())
                 output_id = int(self.output_device.currentData())
@@ -2099,6 +2155,13 @@ class TranslatorWindow(QWidget):
                     self.previous_system_output = route_output_to(input_name)
                 if platform.system() == "Darwin" and output_virtual and not input_virtual:
                     self.previous_system_input = route_input_to(output_name)
+                if platform.system() == "Windows":
+                    if input_virtual and not output_virtual:
+                        # Tinglash: Zoom speaker -> kabel (app o'qiydigan kabel).
+                        self._win_apply_routing(self._win_cable_match(input_name), "")
+                    elif output_virtual and not input_virtual:
+                        # Gapirish: Zoom mic -> kabel (app yozadigan kabel).
+                        self._win_apply_routing("", self._win_cable_match(output_name))
                 pair = self._current_pair()
                 process_arguments.extend(
                     [
@@ -2618,6 +2681,10 @@ class TranslatorWindow(QWidget):
         previous_input = self.previous_system_input
         self.previous_system_output = None
         self.previous_system_input = None
+        if platform.system() == "Windows":
+            # Stop: Start'da saqlangan default qurilmalarni qaytaramiz.
+            self._win_restore_routing()
+            return
         if platform.system() != "Darwin":
             return
         errors: list[str] = []

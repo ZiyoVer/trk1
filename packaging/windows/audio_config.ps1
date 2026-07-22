@@ -1,19 +1,23 @@
-# Live Translator — Windows default karnayni FIZIK qurilmaga qaytaradi.
+# Live Translator — Windows default audio qurilmalarini boshqarish.
 #
-# VB-CABLE va Hi-Fi Cable drayverlari o'rnatilganda o'zlarini Windows'ning
-# default karnayi qilib qo'yadi -> ovoz haqiqiy karnayga bormay qoladi.
-# Bu skript IPolicyConfig orqali default ijro qurilmasini birinchi FIZIK
-# (virtual bo'lmagan) qurilmaga qaytaradi. Ilovaning O'Z sessiyasida
-# ishlaydi (audio-COM shu yerda ishlaydi).
+# IPolicyConfig orqali default IJRO (render) va YOZIB OLISH (capture)
+# qurilmasini o'qish/o'rnatish. Ilovaning O'Z sessiyasida ishlaydi.
 #
-# Ixtiyoriy -Match: aynan shu nom bo'lagini o'z ichiga olgan qurilma.
+# -Action getdefaults        -> "render=<nom>" va "capture=<nom>"
+# -Action setrender -Name X  -> default ijro = X nomli qurilma
+# -Action setcapture -Name X -> default yozib olish = X nomli qurilma
+# -Action restore            -> ikkalasini birinchi FIZIK qurilmaga qaytaradi
 
-param([string]$Match = "")
+param(
+    [string]$Action = "getdefaults",
+    [string]$Name = ""
+)
 
 $ErrorActionPreference = "Stop"
 
 Add-Type -Language CSharp @"
 using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 namespace LTAudio {
   [Guid("f8679f50-850a-41cf-9c72-430f290290c8"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
@@ -48,35 +52,40 @@ namespace LTAudio {
     int GetValue(ref PKEY k, out PROPVARIANT v); int SetValue(ref PKEY k, ref PROPVARIANT v); int Commit();
   }
   [StructLayout(LayoutKind.Explicit)] public struct PROPVARIANT { [FieldOffset(0)] public short vt; [FieldOffset(8)] public IntPtr p; }
-  public static class Config {
+  public static class Cfg {
     static PKEY NAME = new PKEY { fmtid = new Guid("a45c254e-df1c-4efd-8020-67d146a850e0"), pid = 14 };
+    // 0 = eRender (ijro), 1 = eCapture (yozib olish)
+    static string DeviceName(IMMDevice d) {
+      IPropertyStore ps; d.OpenPropertyStore(0, out ps);
+      PROPVARIANT v; ps.GetValue(ref NAME, out v);
+      return Marshal.PtrToStringUni(v.p);
+    }
     static bool IsVirtual(string n) {
       if (n == null) return true;
       n = n.ToLowerInvariant();
       return n.Contains("cable") || n.Contains("hi-fi") || n.Contains("hifi")
-          || n.Contains("vb-audio") || n.Contains("sound mapper")
-          || n.Contains("переназначение"); // "Переназначение"
+          || n.Contains("vb-audio") || n.Contains("sound mapper") || n.Contains("переназначение");
     }
-    public static string Restore(string match) {
+    public static string GetDefaultName(int flow) {
       var en = (IMMDeviceEnumerator)(new MMDeviceEnumerator());
-      IMMDeviceCollection col; en.EnumAudioEndpoints(0 /*eRender*/, 1 /*DEVICE_STATE_ACTIVE*/, out col);
+      IMMDevice d;
+      if (en.GetDefaultAudioEndpoint(flow, 1 /*eMultimedia*/, out d) != 0 || d == null) return "";
+      return DeviceName(d) ?? "";
+    }
+    static void SetById(string id) {
+      var pc = (IPolicyConfig)(new CPolicyConfigClient());
+      pc.SetDefaultEndpoint(id, 0); pc.SetDefaultEndpoint(id, 1); pc.SetDefaultEndpoint(id, 2);
+    }
+    public static string SetDefaultByName(int flow, string match, bool physicalOnly) {
+      var en = (IMMDeviceEnumerator)(new MMDeviceEnumerator());
+      IMMDeviceCollection col; en.EnumAudioEndpoints(flow, 1 /*ACTIVE*/, out col);
       int n; col.GetCount(out n);
       for (int i = 0; i < n; i++) {
         IMMDevice d; col.Item(i, out d);
-        IPropertyStore ps; d.OpenPropertyStore(0, out ps);
-        PROPVARIANT v; ps.GetValue(ref NAME, out v);
-        string name = Marshal.PtrToStringUni(v.p);
-        string id; d.GetId(out id);
-        bool okName = string.IsNullOrEmpty(match)
-          ? !IsVirtual(name)
-          : (name != null && name.ToLowerInvariant().Contains(match.ToLowerInvariant()) && !IsVirtual(name));
-        if (okName) {
-          var pc = (IPolicyConfig)(new CPolicyConfigClient());
-          pc.SetDefaultEndpoint(id, 0); // eConsole
-          pc.SetDefaultEndpoint(id, 1); // eMultimedia
-          pc.SetDefaultEndpoint(id, 2); // eCommunications
-          return name;
-        }
+        string name = DeviceName(d); string id; d.GetId(out id);
+        bool nameOk = string.IsNullOrEmpty(match)
+          ? true : (name != null && name.ToLowerInvariant().Contains(match.ToLowerInvariant()));
+        if (nameOk && (!physicalOnly || !IsVirtual(name))) { SetById(id); return name; }
       }
       return null;
     }
@@ -84,5 +93,17 @@ namespace LTAudio {
 }
 "@
 
-$result = [LTAudio.Config]::Restore($Match)
-if ($result) { Write-Output ("OK: " + $result) } else { Write-Output "NO_PHYSICAL_DEVICE" }
+switch ($Action) {
+  "getdefaults" {
+    Write-Output ("render=" + [LTAudio.Cfg]::GetDefaultName(0))
+    Write-Output ("capture=" + [LTAudio.Cfg]::GetDefaultName(1))
+  }
+  "setrender"  { $r = [LTAudio.Cfg]::SetDefaultByName(0, $Name, $false); if ($r) { "OK: $r" } else { "NOT_FOUND" } }
+  "setcapture" { $r = [LTAudio.Cfg]::SetDefaultByName(1, $Name, $false); if ($r) { "OK: $r" } else { "NOT_FOUND" } }
+  "restore" {
+    $r = [LTAudio.Cfg]::SetDefaultByName(0, "", $true)
+    $c = [LTAudio.Cfg]::SetDefaultByName(1, "", $true)
+    "render=" + $r; "capture=" + $c
+  }
+  default { "UNKNOWN_ACTION" }
+}
