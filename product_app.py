@@ -14,6 +14,7 @@ import threading
 import urllib.request
 import uuid
 import zipfile
+from contextlib import suppress
 from datetime import datetime
 from pathlib import Path
 
@@ -120,6 +121,7 @@ from audio import (
     available_devices,
     auto_input_device,
     auto_output_device,
+    is_alias_output,
     preferred_physical_output,
 )
 from audio_routing import (
@@ -156,6 +158,7 @@ from system_audio import (
     InputDevice,
     OutputDevice,
     default_input as system_default_input,
+    default_output as system_default_output,
     route_input_to,
     route_output_to,
     set_default_input,
@@ -821,10 +824,10 @@ class TranslatorWindow(QWidget):
         self._build_tray()
         self._sync_mode_ui(apply_devices=False)
         self._refresh_audio_devices()
-        # DIQQAT: tizim mikrofonini ishga tushganda AVTOMATIK tiklamaymiz.
-        # U virtual kabelda qolgani Zoom'ning "Same as System" rejimi bilan
-        # hech narsa tanlamasdan ishlashini ta'minlaydi (O'ktamning ish
-        # oqimi). Kerak bo'lsa menyu panelidan qo'lda tiklanadi.
+        # Ishga tushganda: eski sessiyadan kabel(lar)da qolib ketgan tizim
+        # qurilmalari fizikka qaytariladi. Start bosilganda kerakli kabelga
+        # o'tadi, Stop'da yana fizikka qaytadi (2026-07-22 O'ktam talabi).
+        self._ensure_physical_defaults()
         self._set_controls(running=False)
 
     # ------------------------------------------------------------------
@@ -2373,14 +2376,49 @@ class TranslatorWindow(QWidget):
         self._set_status("AUDIO QURILMA ALMASHDI", "#f59e0b")
         self.route_hint.setText(f"Tarjima ovozi «{desired}» qurilmasiga ko‘chirilmoqda…")
 
-    def _restore_physical_microphone(self) -> None:
-        """Tizim mikrofonini virtual kabeldan fizik mikrofonga qaytaradi.
+    def _ensure_physical_defaults(self, force: bool = False) -> None:
+        """Tarjima ISHLAMAYOTGANDA tizim mikrofoni/karnayi FIZIK bo'lishi shart.
 
-        QO'LDA chaqiriladi (menyu panel). Avtomatik qilmaymiz: kabelda
-        qolgani Zoom "Same as System" bilan hech narsa tanlamasdan
-        ishlashini ta'minlaydi. Lekin tarjimon o'chiq bo'lganda boshqa
-        ilovalarda mikrofon jim bo'ladi — o'shanda shu tugma yordam beradi.
+        Aks holda Meet/Zoom "Same as System" bilan bo'sh kabelni tinglaydi va
+        foydalanuvchini hech kim eshitmaydi (O'ktam Meet'da aynan shu holatga
+        tushdi: mikrofon eski sessiyadan BlackHole 16ch'da qolgan edi).
+
+        Hayot sikli: o'chiq = fizik → Start = kerakli kabel → Stop = fizik.
         """
+        if platform.system() != "Darwin":
+            return
+        if self.process is not None and not force:
+            return
+        with suppress(Exception):
+            current_input = system_default_input().name
+            if is_virtual_device(current_input):
+                physical = next(
+                    (
+                        device
+                        for device in available_devices("input")
+                        if not is_virtual_device(device.name)
+                    ),
+                    None,
+                )
+                if physical is not None:
+                    route_input_to(physical.name)
+        with suppress(Exception):
+            current_output = system_default_output().name
+            if is_virtual_device(current_output):
+                physical_output = next(
+                    (
+                        device
+                        for device in available_devices("output")
+                        if not is_virtual_device(device.name)
+                        and not is_alias_output(device.name)
+                    ),
+                    None,
+                )
+                if physical_output is not None:
+                    route_output_to(physical_output.name)
+
+    def _restore_physical_microphone(self) -> None:
+        """Menyu paneldagi qo'lda tiklash tugmasi (zaxira yo'l)."""
         if platform.system() != "Darwin" or self.process is not None:
             return
         try:
@@ -2416,16 +2454,20 @@ class TranslatorWindow(QWidget):
         if platform.system() != "Darwin":
             return
         errors: list[str] = []
-        if previous_input:
+        # Himoya: oldingi crash tufayli "previous" ning o'zi kabel bo'lib
+        # qolgan bo'lishi mumkin — unga qaytarish foydasiz, fizikka
+        # qaytaramiz (_ensure_physical_defaults pastda).
+        if previous_input and not is_virtual_device(previous_input.name):
             try:
                 set_default_input(previous_input)
             except Exception as error:
                 errors.append(f"Avvalgi microphone qaytarilmadi: {error}")
-        if previous_output:
+        if previous_output and not is_virtual_device(previous_output.name):
             try:
                 set_default_output(previous_output)
             except Exception as error:
                 errors.append(f"Avvalgi audio output qaytarilmadi: {error}")
+        self._ensure_physical_defaults(force=True)
         if errors:
             restored_error = " | ".join(errors)
             self.last_engine_error = " | ".join(
