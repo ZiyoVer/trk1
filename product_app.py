@@ -170,7 +170,7 @@ from system_audio import (
 
 
 APP_NAME = "Live Translator"
-APP_VERSION = "0.9.16"
+APP_VERSION = "0.9.17"
 KEYRING_SERVICE = "local.live-translator"
 KEYRING_ACCOUNT = "edcom-api-key"
 KEYRING_LICENSE_ACCOUNT = "license-key"
@@ -1535,7 +1535,18 @@ class TranslatorWindow(QWidget):
             self._select_device_kind(
                 self.output_device,
                 virtual=True,
-                preferred_words=("blackhole 2ch", "cable input"),
+                # GAPIRISH chiqishi VIRTUAL kabel bo'lishi SHART — tarjima
+                # kabelga, undan Zoom mikrofoniga ketadi (foydalanuvchi o'zi
+                # ESHITMAYDI). Faqat Hi-Fi Cable o'rnatilgan mashinada chiqish
+                # uning IJRO tomoni bo'ladi ("Speakers/Динамики (...Hi-Fi
+                # Cable)") — shu nomlar ham preferred, aks holda fizik karnay
+                # tanlanib qolib tarjima o'ziga qaytardi (real regressiya).
+                preferred_words=(
+                    "blackhole 2ch",
+                    "cable input",
+                    "hi-fi cable",
+                    "vb-audio hi-fi",
+                ),
             )
         if mode == "duplex":
             self._select_device_kind(
@@ -2178,6 +2189,24 @@ class TranslatorWindow(QWidget):
                 output_name = self._device_name(self.output_device)
                 input_virtual = is_virtual_device(input_name)
                 output_virtual = is_virtual_device(output_name)
+                if mode == "outgoing" and not output_virtual:
+                    # XAVFSIZLIK TO'RI: Gapirish chiqishi fizik karnay bo'lib
+                    # qolgan bo'lsa, tarjima Zoom o'rniga foydalanuvchining
+                    # o'ziga chiqadi (real xato). Virtual kabelga majburan
+                    # o'tkazamiz; kabel umuman bo'lmasagina quyida xato beriladi.
+                    if self._select_device_kind(
+                        self.output_device,
+                        virtual=True,
+                        preferred_words=(
+                            "blackhole 2ch",
+                            "cable input",
+                            "hi-fi cable",
+                            "vb-audio hi-fi",
+                        ),
+                    ):
+                        output_id = int(self.output_device.currentData())
+                        output_name = self._device_name(self.output_device)
+                        output_virtual = is_virtual_device(output_name)
                 if mode == "outgoing" and (input_virtual or not output_virtual):
                     raise ValueError(
                         "GAPIRISH rejimi uchun fizik mikrofon va virtual chiqish kerak."
