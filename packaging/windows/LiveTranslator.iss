@@ -16,7 +16,10 @@ Compression=lzma2
 SolidCompression=yes
 SetupIconFile=..\icon\AppIcon.ico
 WizardStyle=modern
-PrivilegesRequired=lowest
+; Admin: virtual audio drayver (VB-CABLE) o'rnatish uchun shart. Bitta UAC
+; butun jarayonni qamraydi — drayver bola jarayon elevation'ni meros
+; qiladi, alohida so'rov chiqmaydi.
+PrivilegesRequired=admin
 ArchitecturesAllowed=x64compatible arm64
 ArchitecturesInstallIn64BitMode=x64compatible arm64
 UninstallDisplayIcon={app}\{#MyAppExeName}
@@ -32,4 +35,11 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional icons:"
 
 [Run]
+; Virtual audio kabelini AVTOMATIK o'rnatish (foydalanuvchi hech narsa
+; qilmaydi). Idempotent: kabel allaqachon bo'lsa qayta o'rnatmaydi.
+; Internet bo'lmasa jimgina o'tadi — ilova birinchi ochilishda qayta urinadi.
+Filename: "powershell.exe"; \
+  Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\install_drivers.ps1"""; \
+  StatusMsg: "Virtual audio drayveri o'rnatilmoqda…"; \
+  Flags: runhidden waituntilterminated
 Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent
