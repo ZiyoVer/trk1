@@ -170,7 +170,7 @@ from system_audio import (
 
 
 APP_NAME = "Live Translator"
-APP_VERSION = "0.9.20"
+APP_VERSION = "0.9.21"
 KEYRING_SERVICE = "local.live-translator"
 KEYRING_ACCOUNT = "edcom-api-key"
 KEYRING_LICENSE_ACCOUNT = "license-key"
@@ -2163,8 +2163,12 @@ class TranslatorWindow(QWidget):
                         incoming_pair.source,
                         "--incoming-target-language",
                         incoming_pair.target,
+                        # Qurilmalarni NOM bilan uzatamiz (index EMAS): GUI
+                        # va dvigatel qurilma index'lari mos kelmasligi mumkin
+                        # (tinglashdagi kabi), shunda dvigatel noto'g'ri kabel/
+                        # qurilma ochib, ikki tomonlama buzilardi.
                         "--incoming-input-device",
-                        str(routes.incoming_input.index),
+                        routes.incoming_input.name,
                         "--incoming-output-device",
                         incoming_output_arg,
                         "--outgoing-source-language",
@@ -2172,9 +2176,9 @@ class TranslatorWindow(QWidget):
                         "--outgoing-target-language",
                         outgoing_pair.target,
                         "--outgoing-input-device",
-                        str(routes.outgoing_input.index),
+                        routes.outgoing_input.name,
                         "--outgoing-output-device",
-                        str(routes.outgoing_output.index),
+                        routes.outgoing_output.name,
                     ]
                 )
                 control_sessions = [
