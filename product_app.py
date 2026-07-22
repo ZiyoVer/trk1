@@ -176,6 +176,22 @@ KEYRING_LICENSE_ACCOUNT = "license-key"
 KEYRING_CONTROL_URL_ACCOUNT = "control-url"
 KEYRING_DEVICE_ACCOUNT = "device-id"
 PROJECT_DIR = Path(__file__).resolve().parent
+
+
+def resource_path(name: str) -> Path:
+    """Bundlangan yordamchi fayl yo'li (dev va PyInstaller frozen uchun)."""
+    base = getattr(sys, "_MEIPASS", None)
+    candidates = []
+    if base:
+        candidates.append(Path(base) / name)
+    candidates += [
+        PROJECT_DIR / name,
+        PROJECT_DIR / "packaging" / "windows" / name,
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return candidates[0] if candidates else PROJECT_DIR / name
 BLACKHOLE_URL = "https://existential.audio/downloads/BlackHole2ch-0.7.1.pkg"
 BLACKHOLE_SHA256 = "57b540f27a3e29c37e310e01bee0fdfab76733087e47f997ef9dccf851400dcf"
 BLACKHOLE_16CH_URL = "https://existential.audio/downloads/BlackHole16ch-0.7.1.pkg"
@@ -952,6 +968,13 @@ class TranslatorWindow(QWidget):
                 "virtual kabeldan fizik mikrofonga qaytaradi."
             )
             restore_mic_action.triggered.connect(self._restore_physical_microphone)
+        if platform.system() == "Windows":
+            restore_spk_action = menu.addAction(t("Ovozni karnayга qaytarish"))
+            restore_spk_action.setToolTip(
+                "Ovoz eshitilmasa: default karnayni virtual kabeldan "
+                "haqiqiy karnayga qaytaradi."
+            )
+            restore_spk_action.triggered.connect(self._restore_speaker_clicked)
         menu.addSeparator()
         # Interfeys tili — avtomatik aniqlanadi, shu yerdan o'zgartiriladi.
         self.tray_ui_lang_menu = menu.addMenu(t("Interfeys tili"))
@@ -1652,11 +1675,69 @@ class TranslatorWindow(QWidget):
             path.unlink(missing_ok=True)
             raise RuntimeError("Driver checksum mos kelmadi; o‘rnatish bekor qilindi.")
 
+    def _restore_speaker_clicked(self) -> None:
+        result = self.restore_windows_default_speaker()
+        if result.startswith("OK:"):
+            self._set_status("KARNAY TIKLANDI", "#22c55e")
+            if self.tray is not None:
+                self.tray.showMessage(
+                    APP_NAME,
+                    f"Ovoz endi: {result[3:].strip()}",
+                    QSystemTrayIcon.MessageIcon.Information,
+                    3000,
+                )
+        elif self.tray is not None:
+            self.tray.showMessage(
+                APP_NAME,
+                "Fizik karnay topilmadi — Windows ovoz sozlamalaridan qo‘lda tanlang.",
+                QSystemTrayIcon.MessageIcon.Warning,
+                4000,
+            )
+
+    def restore_windows_default_speaker(self, match: str = "") -> str:
+        """Windows default karnayni FIZIK qurilmaga qaytaradi.
+
+        VB-CABLE/Hi-Fi drayverlari o'zlarini default karnay qilib qo'yadi —
+        natijada ovoz haqiqiy karnayga bormaydi. Bundlangan IPolicyConfig
+        skripti buni tuzatadi (ilovaning o'z sessiyasida ishlaydi).
+        """
+        if platform.system() != "Windows":
+            return ""
+        script = resource_path("restore_default_audio.ps1")
+        if not script.exists():
+            return ""
+        try:
+            args = [
+                "powershell.exe",
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                str(script),
+            ]
+            if match:
+                args += ["-Match", match]
+            creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+            result = subprocess.run(
+                args,
+                capture_output=True,
+                text=True,
+                timeout=30,
+                creationflags=creationflags,
+            )
+            return (result.stdout or "").strip()
+        except Exception:
+            return ""
+
     def _driver_installer_ready(self, path: str) -> None:
         self.driver_button.setEnabled(True)
         self.driver_button.setText("AUDIO DRIVER O‘RNATISH")
         if path:
             QDesktopServices.openUrl(QUrl.fromLocalFile(path))
+        # Windows: drayver o'zini default karnay qilib qo'ygan bo'lishi
+        # mumkin — fizik karnayga qaytaramiz (ovoz eshitilmay qolmasin).
+        if platform.system() == "Windows":
+            self.restore_windows_default_speaker()
         if platform.system() == "Darwin":
             variant = "BlackHole 16ch" if "16ch" in Path(path).name else "BlackHole 2ch"
             instructions = (

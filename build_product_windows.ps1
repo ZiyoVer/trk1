@@ -28,6 +28,7 @@ Set-Content -Encoding UTF8 $RuntimeHook "import os`nos.environ.setdefault(`"LIVE
     --collect-all google.genai `
     --collect-all sounddevice `
     --collect-data certifi `
+    --add-data "packaging\windows\restore_default_audio.ps1;." `
     --collect-submodules keyring.backends `
     --runtime-hook $RuntimeHook `
     product_app.py
