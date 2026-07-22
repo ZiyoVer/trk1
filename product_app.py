@@ -962,6 +962,8 @@ class TranslatorWindow(QWidget):
         self.tray_monitor_action.setCheckable(True)
         self.tray_monitor_action.setChecked(self.monitor_enabled)
         self.tray_monitor_action.toggled.connect(self._toggle_monitor)
+        open_logs_action = menu.addAction(t("Loglarni ochish"))
+        open_logs_action.triggered.connect(self._open_logs_folder)
         logs_action = menu.addAction(t("Loglarni yig‘ish (ZIP)"))
         logs_action.triggered.connect(self.export_logs)
         if platform.system() == "Darwin":
@@ -1081,6 +1083,12 @@ class TranslatorWindow(QWidget):
                 QSystemTrayIcon.MessageIcon.Information,
                 4000,
             )
+
+    def _open_logs_folder(self) -> None:
+        """Log papkasini ochadi (Finder/Explorer)."""
+        directory = log_directory()
+        directory.mkdir(parents=True, exist_ok=True)
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(directory)))
 
     def export_logs(self) -> None:
         """Barcha loglarni bitta ZIP qilib Desktop'ga chiqaradi.
@@ -1807,11 +1815,15 @@ class TranslatorWindow(QWidget):
                 "Virtual audio kabel o‘rnatildi. Endi tarjimani boshlashingiz "
                 "mumkin. (Kabel ko‘rinmasa Windows’ni bir marta qayta ishga tushiring.)"
             )
+        # Status "O'RNATILMOQDA…"da qotib qolmasin — o'rnatildi.
+        self._set_status("AUDIO DRIVER O‘RNATILDI", "#22c55e")
+        self._refresh_driver_state()
         QMessageBox.information(
             self,
             "Audio driver",
             instructions,
         )
+        self._set_status("TAYYOR", "#94a3b8")
 
     def _driver_installer_failed(self, error: str) -> None:
         self.driver_button.setEnabled(True)

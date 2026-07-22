@@ -115,11 +115,26 @@ def auto_input_device(query: str | None) -> DeviceChoice:
     if query:
         return find_device(query, "input")
     if platform.system() == "Windows":
-        for name in ("CABLE Output", "VB-Audio Virtual Cable"):
-            try:
-                return find_device(name, "input")
-            except RuntimeError:
-                pass
+        # ASOSIY VB-CABLE'ning yozib-olish tomonini topamiz. DIQQAT: Hi-Fi
+        # Cable ham "Cable Output" nomiga ega — uni chetlab, aynan "Virtual
+        # Cable" oilasini qidiramiz (aks holda listen Hi-Fi'ni tanlab
+        # qolardi, real Windows testda aynan shunday bo'ldi).
+        devices: Sequence[dict] = sd.query_devices()
+        for index, device in enumerate(devices):
+            name = _device_name(device)
+            folded = name.casefold()
+            if (
+                int(device["max_input_channels"]) > 0
+                and "virtual cable" in folded
+                and "hi-fi" not in folded
+            ):
+                return find_device(str(index), "input")
+        # Zaxira: har qanday "cable output" (Hi-Fi bo'lsa ham — hech
+        # narsadan yaxshi).
+        for index, device in enumerate(devices):
+            name = _device_name(device)
+            if int(device["max_input_channels"]) > 0 and "cable output" in name.casefold():
+                return find_device(str(index), "input")
         raise RuntimeError(
             "VB-CABLE input topilmadi. Ilovadagi Audio Driver tugmasi bilan o‘rnating."
         )

@@ -31,11 +31,13 @@ _STRINGS: dict[str, dict[str, str]] = {
         "ru": "Слышать перевод самому",
         "en": "Hear translation myself",
     },
+    "Loglarni ochish": {"ru": "Открыть логи", "en": "Open logs"},
     "Loglarni yig‘ish (ZIP)": {"ru": "Собрать логи (ZIP)", "en": "Collect logs (ZIP)"},
     "Tizim mikrofonini tiklash": {
         "ru": "Восстановить системный микрофон",
         "en": "Restore system microphone",
     },
+    "Ovozni karnayга qaytarish": {"ru": "Вернуть звук на динамик", "en": "Restore sound to speaker"},
     "Sozlamalar…": {"ru": "Настройки…", "en": "Settings…"},
     "Sozlamalar": {"ru": "Настройки", "en": "Settings"},
     "Chiqish": {"ru": "Выход", "en": "Quit"},
