@@ -170,7 +170,7 @@ from system_audio import (
 
 
 APP_NAME = "Live Translator"
-APP_VERSION = "0.9.18"
+APP_VERSION = "0.9.19"
 KEYRING_SERVICE = "local.live-translator"
 KEYRING_ACCOUNT = "edcom-api-key"
 KEYRING_LICENSE_ACCOUNT = "license-key"
@@ -2189,6 +2189,10 @@ class TranslatorWindow(QWidget):
                 output_name = self._device_name(self.output_device)
                 input_virtual = is_virtual_device(input_name)
                 output_virtual = is_virtual_device(output_name)
+                # Dvigatelga uzatiladigan chiqish argumenti. Odatda index,
+                # lekin Windows tinglashda NOM bilan uzatamiz (pastga qarang)
+                # — GUI va dvigatel qurilma index'lari mos kelmasligi mumkin.
+                output_arg = str(output_id)
                 if mode == "outgoing" and not output_virtual:
                     # XAVFSIZLIK TO'RI: Gapirish chiqishi fizik karnay bo'lib
                     # qolgan bo'lsa, tarjima Zoom o'rniga foydalanuvchining
@@ -2223,6 +2227,15 @@ class TranslatorWindow(QWidget):
                     if input_virtual and not output_virtual:
                         # Tinglash: Zoom speaker -> kabel (app o'qiydigan kabel).
                         self._win_apply_routing(self._win_cable_match(input_name), "")
+                        # Tarjimani ROUTING'DAN OLDINGI haqiqiy karnayga
+                        # (win_prev_render) NOM bilan chiqaramiz. Default endi
+                        # kabel bo'lgani uchun avto-tanlash/index noto'g'ri
+                        # qurilma (bo'sh quloqchin uyasi yoki kabel) tanlab,
+                        # foydalanuvchi tarjimani ESHITMASDI (real xato).
+                        prev = getattr(self, "win_prev_render", "")
+                        if prev and not is_virtual_device(prev):
+                            output_name = prev
+                            output_arg = prev
                     elif output_virtual and not input_virtual:
                         # Gapirish: Zoom mic -> kabel (app yozadigan kabel).
                         self._win_apply_routing("", self._win_cable_match(output_name))
@@ -2236,7 +2249,7 @@ class TranslatorWindow(QWidget):
                         "--input-device",
                         str(input_id),
                         "--output-device",
-                        str(output_id),
+                        output_arg,
                     ]
                 )
                 if mode == "outgoing" and self.monitor_enabled:
@@ -2571,8 +2584,7 @@ class TranslatorWindow(QWidget):
         # surface a waiting state until a later connection succeeds.
         self.connection_timer.start(30_000)
 
-    @staticmethod
-    def _output_preference_words() -> tuple[str, ...]:
+    def _output_preference_words(self) -> tuple[str, ...]:
         """Tarjima chiqishi uchun afzallik ro'yxati.
 
         Birinchi o'rinda TIZIM tanlagan fizik qurilma turadi: foydalanuvchi
@@ -2581,12 +2593,26 @@ class TranslatorWindow(QWidget):
         faqat zaxira (tizim tanlovi virtual kabel bo'lib qolgan hollar).
         """
         words: list[str] = []
+        # Windows tinglashda tizim default'i KABELGA o'rnatiladi, shuning
+        # uchun preferred_physical_output() None qaytaradi va "headphone"
+        # kaliti bo'sh quloqchin uyasini tanlab qo'yardi. Start'dan oldingi
+        # haqiqiy karnay (win_prev_render) — eng ishonchli belgi, uni ENG
+        # OLDINGA qo'yamiz.
+        prev = getattr(self, "win_prev_render", "")
+        if prev and not is_virtual_device(prev):
+            words.append(prev.casefold())
         try:
             choice = preferred_physical_output()
         except Exception:
             choice = None
         if choice is not None:
             words.append(choice.name.casefold())
+        if platform.system() == "Windows":
+            # Desktop: Realtek quloqchin uyasi ("Headphones") ko'pincha BO'SH
+            # bo'lsa ham "active" ko'rinadi. Shuning uchun haqiqiy karnayni
+            # ("speaker"/"realtek") quloqchindan OLDIN qo'yamiz — aks holda
+            # tarjima jim uyaga chiqib, foydalanuvchi eshitmasdi.
+            words.extend(("speaker", "realtek", "built-in"))
         words.extend(
             (
                 "airpods",
