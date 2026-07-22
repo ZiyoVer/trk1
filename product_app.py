@@ -1213,13 +1213,27 @@ class TranslatorWindow(QWidget):
     def _first_run(self) -> None:
         if not self.api_key:
             self.edit_settings(required=True)
-        if not self._virtual_driver_name(refresh=True):
+        if not self._has_base_cable(refresh=True):
             QTimer.singleShot(300, self._begin_first_run_driver_setup)
 
+    def _has_base_cable(self, refresh: bool = False) -> bool:
+        """ASOSIY kabel (VB-CABLE / BlackHole 2ch) borligini tekshiradi.
+
+        DIQQAT: shunchaki 'biror virtual kabel bormi' emas — aynan asosiy
+        kabel. Aks holda faqat Hi-Fi bor mashinada (real holat) ilova
+        'kabel bor' deb asosiy VB-CABLE'ni o'rnatishni o'tkazib yuborardi.
+        """
+        base = "vb-cable" if platform.system() == "Windows" else "blackhole 2ch"
+        for name in self._virtual_driver_names(refresh=refresh):
+            if base in virtual_device_family(name):
+                return True
+        return False
+
     def _begin_first_run_driver_setup(self) -> None:
-        if self.driver_install_prompted or self._virtual_driver_name(refresh=True):
+        if self.driver_install_prompted or self._has_base_cable(refresh=True):
             return
         self.driver_install_prompted = True
+        self.driver_variant = "2ch"  # birinchi ochilishda ASOSIY kabel
         self._set_status("AUDIO DRIVER O‘RNATILMOQDA…", "#f59e0b")
         self.install_driver()
 
