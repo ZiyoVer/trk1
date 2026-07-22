@@ -4,7 +4,16 @@ from __future__ import annotations
 
 import argparse
 import re
+import sys
 from pathlib import Path
+
+# Windows CI konsoli cp1252 — "✓" kabi belgilar UnicodeEncodeError beradi
+# va butun build yiqilardi. Chiqishni UTF-8 ga o'tkazamiz.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        pass
 
 
 SECRET_PATTERNS = {

@@ -28,13 +28,18 @@ Set-Content -Encoding UTF8 $RuntimeHook "import os`nos.environ.setdefault(`"LIVE
     --collect-all google.genai `
     --collect-all sounddevice `
     --collect-data certifi `
-    --add-data "packaging\windows\audio_config.ps1;." `
+    --add-data "$Root\packaging\windows\audio_config.ps1;." `
     --collect-submodules keyring.backends `
     --runtime-hook $RuntimeHook `
     product_app.py
+# PyInstaller native buyruq — xatoda $ErrorActionPreference "Stop" ishlamaydi,
+# shuning uchun exit-kodni O'ZIMIZ tekshiramiz (aks holda buzuq artefakt bilan
+# davom etib, noto'g'ri "muvaffaqiyat" installer chiqarardi).
+if ($LASTEXITCODE -ne 0) { throw "PyInstaller build muvaffaqiyatsiz (exit $LASTEXITCODE)" }
 
 $AppFolder = Join-Path $Root "dist\product\Live Translator"
 & .venv-product\Scripts\python.exe audit_artifact.py $AppFolder
+if ($LASTEXITCODE -ne 0) { throw "audit_artifact tekshiruvi muvaffaqiyatsiz (exit $LASTEXITCODE)" }
 
 $SignTool = $null
 if ($env:WINDOWS_SIGN_CERT_SHA1) {
@@ -53,8 +58,11 @@ if (-not (Test-Path $Iscc)) {
     throw "Inno Setup 6 topilmadi: $Iscc"
 }
 & $Iscc packaging\windows\LiveTranslator.iss
+if ($LASTEXITCODE -ne 0) { throw "Inno Setup kompilyatsiyasi muvaffaqiyatsiz (exit $LASTEXITCODE)" }
 
-$Installer = Join-Path $Root "installer\windows\LiveTranslator-Setup-0.9.15.exe"
+$Installer = Join-Path $Root "installer\windows\LiveTranslator-Setup-0.9.16.exe"
+if (-not (Test-Path $Installer)) { throw "Installer yaratilmadi: $Installer" }
 if ($SignTool) {
     & $SignTool sign /sha1 $env:WINDOWS_SIGN_CERT_SHA1 /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 $Installer
 }
+Write-Host "TAYYOR: $Installer"
