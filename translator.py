@@ -128,23 +128,12 @@ def build_live_config(args: argparse.Namespace) -> types.LiveConnectConfig:
             target_language_code=args.target_language,
             echo_target_language=False,
         ),
-        # Server-VAD (ovoz-aniqlagich) kam-sezgir qilinadi: jim/shovqin
-        # paytda model NUTQ boshlandi deb hisoblab "gap to'qimasin"
-        # (hallutsinatsiya: "that it that it..."). START past sezgirlik —
-        # turnni faqat ANIQ nutqda boshlaydi; END yuqori — pauzada turnni
-        # tez yopadi (jimlikda cho'zilib to'qimaydi). Client SilenceGate
-        # (nol yuborish) bilan ikki qatlamli himoya.
-        realtime_input_config=types.RealtimeInputConfig(
-            automatic_activity_detection=types.AutomaticActivityDetection(
-                start_of_speech_sensitivity=(
-                    types.StartSensitivity.START_SENSITIVITY_LOW
-                ),
-                end_of_speech_sensitivity=(
-                    types.EndSensitivity.END_SENSITIVITY_HIGH
-                ),
-                silence_duration_ms=800,
-            )
-        ),
+        # ESLATMA: realtime_input_config (server-VAD) BILAN SINALDI va
+        # OLIB TASHLANDI (v0.9.36). start_of_speech_sensitivity=LOW model
+        # foydalanuvchi nutqiga ham javob bermay qo'ydi — tarjima butunlay
+        # ishlamay qoldi (regressiya). Sukunat gallutsinatsiyasi ("that it
+        # that it") uchun faqat client SilenceGate ishlatiladi (jimlikda
+        # nol yuboradi) — u tarjimani buzmaydi.
     )
 
 
@@ -727,7 +716,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--silence-threshold",
         type=int,
-        default=400,
+        default=300,
         help="RMS ostidagi audio JIMLIK deb sanaladi (VAD). 0 = o'chiq. "
         "Jim paytda modelga sukunat yuborilib gap-to'qish (hallutsinatsiya) "
         "to'xtatiladi.",
