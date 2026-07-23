@@ -200,6 +200,9 @@ class CaptureGate:
     # abadiy o'chib qolmasin. 25s — uzun tabiiy nutq ijrosidan uzunroq
     # (duplex himoyasi buzilmaydi), lekin qotgan holatdan chiqaradi.
     MAX_BLOCK_SECONDS = 25.0
+    drop_reason = (
+        "Mikrofon vaqtincha jim: o‘z tarjimamiz ijro etilmoqda (feedback himoyasi)"
+    )
 
     def __init__(self, source_player_ref, clock=time.monotonic):  # noqa: ANN001
         self._source_player_ref = source_player_ref
@@ -224,6 +227,58 @@ class CaptureGate:
         if playing:
             self._blocked_until = now + self.TAIL_SECONDS
         return True
+
+
+# Push-to-talk uchun standart tugma: O'ng Ctrl (VK_RCONTROL). Discord kabi
+# — bosib turilganda gapiriladi, qo'yib yuborilganda mikrofon jim.
+PTT_DEFAULT_VK = 0xA3
+
+
+def make_ptt_key_check(vk_code: int = PTT_DEFAULT_VK):
+    """Windows'da berilgan VK tugma HOZIR bosilganmi — global tekshiruvchi
+    funksiya qaytaradi (GetAsyncKeyState). Ilova fokusda bo'lmasa ham
+    (Zoom/Meet oynasida) ishlaydi. Windows bo'lmasa None qaytaradi."""
+    if platform.system() != "Windows":
+        return None
+    import ctypes
+
+    user32 = ctypes.windll.user32  # type: ignore[attr-defined]
+
+    def _down() -> bool:
+        # Yuqori bit (0x8000) — tugma ayni damda bosilgan.
+        return bool(user32.GetAsyncKeyState(vk_code) & 0x8000)
+
+    return _down
+
+
+class PushToTalkGate:
+    """Push-to-talk: gapirish mikrofoni FAQAT tugma bosib turilganda ochiq,
+    aks holda jim.
+
+    Karnay bilan ishlaganda CaptureGate'dan afzalligi: mikrofon faqat SIZ
+    gapirganda (tugmani bosganda) faol, shuning uchun karnaydagi tarjima
+    hech qachon qayta ushlanmaydi (feedback halqasi butunlay yo'q). Bundan
+    tashqari suhbatdosh gapirayotgan bo'lsa ham istalgan payt gapira olasiz —
+    CaptureGate esa incoming yangraganda mikrofonni butunlay yopib, gapirishga
+    yo'l qo'ymasdi (karnayda uzluksiz ijro -> abadiy jim).
+
+    drop_reason=None: tugma ko'p vaqt qo'yib yuborilgani normal holat, uni
+    "himoya" deb logga yozsak spam bo'lardi.
+    """
+
+    drop_reason = None
+
+    def __init__(self, key_down_check):  # noqa: ANN001
+        self._key_down = key_down_check
+
+    def should_drop(self) -> bool:
+        if self._key_down is None:
+            return False  # tugma tekshiruvi yo'q -> mikrofon ochiq qoladi
+        try:
+            return not self._key_down()
+        except Exception:
+            # Tugma holatini o'qib bo'lmasa — gapirish yo'qolib qolmasin.
+            return False
 
 
 class Translator:
@@ -291,16 +346,16 @@ class Translator:
 
     def _enqueue_audio(self, data: bytes) -> None:
         if self.capture_gate is not None and self.capture_gate.should_drop():
-            # O'z tarjimamiz karnayda yangrayapti — bu chunk'ni yuborsak,
-            # model uni "yangi gap" deb qabul qilib qayta tarjima qiladi.
-            self.gated_chunks += 1
-            now = time.monotonic()
-            if now - self._last_gate_log >= 5.0:
-                self._last_gate_log = now
-                self._log(
-                    "Mikrofon vaqtincha jim: o‘z tarjimamiz ijro etilmoqda "
-                    f"(feedback himoyasi, {self.gated_chunks} chunk)."
-                )
+            # Chunk tashlanadi. CaptureGate: o'z tarjimamiz karnayda yangrayapti
+            # (feedback). PushToTalkGate: tugma bosilmagan — bu holatda spam
+            # log yozmaymiz (drop_reason=None).
+            reason = getattr(self.capture_gate, "drop_reason", None)
+            if reason:
+                self.gated_chunks += 1
+                now = time.monotonic()
+                if now - self._last_gate_log >= 5.0:
+                    self._last_gate_log = now
+                    self._log(f"{reason} — {self.gated_chunks} chunk.")
             return
         if self.silence_gate is not None:
             data = self.silence_gate.process(data)
@@ -685,6 +740,13 @@ def build_parser() -> argparse.ArgumentParser:
         "(naushnik ishlatilganda — tarjima karnayga chiqmaydi, echo yo'q)",
     )
     parser.add_argument(
+        "--push-to-talk",
+        action="store_true",
+        help="Ikkalasi (karnay): gapirish mikrofoni FAQAT O'ng Ctrl bosib "
+        "turilganda ochiq. Feedback halqasi yo'q + istalgan payt gapirish. "
+        "--no-gate va CaptureGate o'rniga ishlatiladi.",
+    )
+    parser.add_argument(
         "--speech-speed",
         type=float,
         default=1.08,
@@ -843,7 +905,16 @@ async def async_main(args: argparse.Namespace) -> int:
             # mikrofoni gate bilan yopiladi — aks holda o'z tarjimamiz qayta
             # tarjima bo'lib meetingga ketardi.
             incoming_translator, outgoing_translator = translators
-            if not getattr(args, "no_gate", False):
+            if getattr(args, "push_to_talk", False):
+                # Karnay + push-to-talk: mikrofon faqat O'ng Ctrl bosilganda
+                # ochiq. Feedback halqasi yo'q, istalgan payt gapirish.
+                outgoing_translator.capture_gate = PushToTalkGate(
+                    make_ptt_key_check()
+                )
+            elif not getattr(args, "no_gate", False):
+                # Karnay (default): eshitish tarjimasi yangraganda gapirish
+                # mikrofoni yopiladi — aks holda o'z tarjimamiz qayta tarjima
+                # bo'lib meetingga ketardi (feedback halqasi).
                 outgoing_translator.capture_gate = CaptureGate(
                     lambda: incoming_translator.player
                 )

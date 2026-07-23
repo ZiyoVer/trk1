@@ -171,7 +171,7 @@ from system_audio import (
 
 
 APP_NAME = "Live Translator"
-APP_VERSION = "0.9.37"
+APP_VERSION = "0.9.38"
 KEYRING_SERVICE = "local.live-translator"
 KEYRING_ACCOUNT = "edcom-api-key"
 KEYRING_LICENSE_ACCOUNT = "license-key"
@@ -2210,20 +2210,28 @@ class TranslatorWindow(QWidget):
                 if self._is_headphone_output(incoming_out_name):
                     # Naushnik: mikrofon karnayni eshitmaydi -> feedback
                     # yo'q -> gate KERAK EMAS -> to'liq ikki tomonlama
-                    # (istalgan payt gapirish).
+                    # (bosmasdan, istalgan payt gapirish).
                     process_arguments.append("--no-gate")
                     self.route_hint.setVisible(False)
-                else:
-                    # Karnay: --no-gate BERILMAYDI -> feedback-gate YOQILADI.
-                    # Incoming tarjima karnayda yangraganda gapirish mikrofoni
-                    # avtomatik jim bo'ladi — aks holda mikrofon karnaydagi
-                    # tarjimani qayta ushlab CHEKSIZ HALQA hosil qiladi (o'z
-                    # ovozi qaytadi, "rasvo"). Foydalanuvchi suhbatdosh jim
-                    # bo'lganda gapiradi. To'liq erkin ikki tomonlama = naushnik.
+                elif platform.system() == "Windows":
+                    # Karnay (Windows): PUSH-TO-TALK. Mikrofon faqat O'ng Ctrl
+                    # bosib turilganda ochiq -> karnaydagi tarjima hech qachon
+                    # qayta ushlanmaydi (feedback halqasi yo'q) va suhbatdosh
+                    # gapirayotgan bo'lsa ham istalgan payt gapira olasiz.
+                    # CaptureGate (avtomatik jim) karnayda incoming uzluksiz
+                    # yangragani uchun mikrofonni abadiy yopib qo'yardi.
+                    process_arguments.append("--push-to-talk")
                     self.route_hint.setText(
-                        "🎧 To‘liq ikki tomonlama (istalgan payt gapirish) uchun "
-                        "NAUSHNIK ulang. Karnay bilan: suhbatdosh gapirmayotganda "
-                        "gapiring — aks holda ovoz qaytadi."
+                        "🎤 Karnay rejimi: gapirish uchun O‘NG CTRL tugmasini "
+                        "bosib turing (qo‘yib yuborsangiz mikrofon jim — echo "
+                        "yo‘q). Naushnik ulasangiz bosmasdan erkin gapirasiz."
+                    )
+                    self.route_hint.setVisible(True)
+                else:
+                    # macOS karnay: feedback-gate (navbatlashib gapirish).
+                    self.route_hint.setText(
+                        "🎧 To‘liq ikki tomonlama uchun naushnik ulang. Karnay "
+                        "bilan: suhbatdosh gapirmayotganda gapiring."
                     )
                     self.route_hint.setVisible(True)
                 process_arguments.extend(
