@@ -673,6 +673,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-seconds", type=float, help="Stop automatically after N seconds")
     parser.add_argument("--voice", default=DEFAULT_VOICE, help="Prebuilt voice name")
     parser.add_argument(
+        "--no-gate",
+        action="store_true",
+        help="Ikkalasi: gapirish mikrofoni feedback-gate'ini o'chiradi "
+        "(naushnik ishlatilganda — tarjima karnayga chiqmaydi, echo yo'q)",
+    )
+    parser.add_argument(
         "--speech-speed",
         type=float,
         default=1.08,
@@ -831,9 +837,10 @@ async def async_main(args: argparse.Namespace) -> int:
             # mikrofoni gate bilan yopiladi — aks holda o'z tarjimamiz qayta
             # tarjima bo'lib meetingga ketardi.
             incoming_translator, outgoing_translator = translators
-            outgoing_translator.capture_gate = CaptureGate(
-                lambda: incoming_translator.player
-            )
+            if not getattr(args, "no_gate", False):
+                outgoing_translator.capture_gate = CaptureGate(
+                    lambda: incoming_translator.player
+                )
         loop = asyncio.get_running_loop()
 
         def stop_all() -> None:

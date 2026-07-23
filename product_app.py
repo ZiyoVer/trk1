@@ -172,7 +172,7 @@ from system_audio import (
 
 
 APP_NAME = "Live Translator"
-APP_VERSION = "0.9.31"
+APP_VERSION = "0.9.32"
 KEYRING_SERVICE = "local.live-translator"
 KEYRING_ACCOUNT = "edcom-api-key"
 KEYRING_LICENSE_ACCOUNT = "license-key"
@@ -752,13 +752,12 @@ class TranslatorWindow(QWidget):
 
         self.route_hint = QLabel("")
         self.route_hint.setWordWrap(True)
-        # Zoom mikrofoni noto'g'ri bo'lsa hamma narsa ishlab tursa ham
-        # suhbatdoshlar tarjimani eshitmaydi — bu ogohlantirish ko'zga
-        # tashlanadigan bo'lishi kerak.
+        # Sariq quti olib tashlandi (bo'sh bo'lsa ham ko'rinardi). Faqat
+        # matn bo'lganda ko'rinadigan oddiy yozuv.
         self.route_hint.setStyleSheet(
-            "color: #ffd166; background: #2a2415; border: 1px solid #4a3f1e; "
-            "border-radius: 7px; padding: 7px 9px; font-size: 11px; font-weight: 600;"
+            "color: #ffd166; font-size: 11px; font-weight: 600;"
         )
+        self.route_hint.setVisible(False)
         layout.addWidget(self.route_hint)
 
         self.caption_panel = QFrame()
@@ -2195,6 +2194,17 @@ class TranslatorWindow(QWidget):
                     prev = getattr(self, "win_prev_render", "")
                     if prev and not is_virtual_device(prev):
                         incoming_output_arg = prev
+                # Naushnik ulangan bo'lsa feedback-gate KERAK EMAS: tarjima
+                # quloqqa chiqadi, mikrofon uni eshitmaydi. Gate'siz siz boshqa
+                # odam gapirayotganda ham gapira olasiz (to'liq ikki tomonlama).
+                # Karnayда gate qoladi (echo oldini olish uchun).
+                incoming_out_name = (
+                    incoming_output_arg
+                    if not incoming_output_arg.isdigit()
+                    else routes.incoming_output.name
+                )
+                if self._is_headphone_output(incoming_out_name):
+                    process_arguments.append("--no-gate")
                 process_arguments.extend(
                     [
                         "--duplex",
@@ -2688,6 +2698,19 @@ class TranslatorWindow(QWidget):
             )
         )
         return tuple(words)
+
+    @staticmethod
+    def _is_headphone_output(name: str) -> bool:
+        """Chiqish qurilmasi naushnik/garnituramı — echo xavfi yo'q, ikki
+        tomonlamada feedback-gate kerak emas."""
+        n = (name or "").casefold()
+        return any(
+            marker in n
+            for marker in (
+                "headphone", "headset", "quloqchin", "наушник", "гарнитур",
+                "airpods", "earbuds", " buds", "hands-free", "handsfree",
+            )
+        )
 
     def _physical_output_name(self) -> str:
         """Nazorat ovozi uchun virtual bo'lmagan chiqish (tizim tanlovi afzal)."""
