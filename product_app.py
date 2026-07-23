@@ -171,7 +171,7 @@ from system_audio import (
 
 
 APP_NAME = "Live Translator"
-APP_VERSION = "0.9.25"
+APP_VERSION = "0.9.26"
 KEYRING_SERVICE = "local.live-translator"
 KEYRING_ACCOUNT = "edcom-api-key"
 KEYRING_LICENSE_ACCOUNT = "license-key"
@@ -1517,7 +1517,19 @@ class TranslatorWindow(QWidget):
             return
         if mode in {"incoming", "duplex"}:
             self._select_device_kind(
-                self.input_device, virtual=True, preferred_words=("blackhole 2ch", "cable output")
+                self.input_device,
+                virtual=True,
+                # Hi-Fi Cable'ni BIRINCHI afzal ko'ramiz: real mashinada
+                # meeting audiosi Hi-Fi kabelga ("Hi-Fi Cable Output (2-…)")
+                # ketadi, shunda Start'da tizim chiqishi "Динамики (2- VB-Audio
+                # Hi-Fi Cable)"ga o'rnatiladi va ilova audioni ushlaydi. Hi-Fi
+                # bo'lmasa oddiy "cable output"ga tushamiz (zaxira).
+                preferred_words=(
+                    "blackhole 2ch",
+                    "hi-fi cable output",
+                    "vb-audio hi-fi",
+                    "cable output",
+                ),
             )
             self._select_device_kind(
                 self.output_device,
