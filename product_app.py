@@ -171,7 +171,7 @@ from system_audio import (
 
 
 APP_NAME = "Live Translator"
-APP_VERSION = "0.9.27"
+APP_VERSION = "0.9.28"
 KEYRING_SERVICE = "local.live-translator"
 KEYRING_ACCOUNT = "edcom-api-key"
 KEYRING_LICENSE_ACCOUNT = "license-key"
@@ -1575,8 +1575,13 @@ class TranslatorWindow(QWidget):
                 preferred_words=(
                     "blackhole 16ch",
                     "blackhole 64ch",
-                    # Windows: duplex'ning ikkinchi chiqishi — Hi-Fi Cable'ning
-                    # IJRO tomoni ("Speakers/Динамики (VB-Audio Hi-Fi Cable)").
+                    # Windows: kiruvchi kanal Hi-Fi kabelni oldi, chiquvchi esa
+                    # base VB-CABLE ("CABLE Input") — ishonchli IKKINCHI kabel.
+                    # 1-Hi-Fi nusxa ("VB-Audio Hi-Fi Cable", "2-"siz) ba'zan
+                    # buzuq/faol emas (PortAudio "Invalid device -9996",
+                    # setcapture NOT_FOUND) — shuning uchun base'ni afzal
+                    # ko'ramiz, Hi-Fi faqat zaxira.
+                    "cable input",
                     "hi-fi cable",
                     "vb-audio hi-fi",
                     "cable-b input",
