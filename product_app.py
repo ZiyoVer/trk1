@@ -172,7 +172,7 @@ from system_audio import (
 
 
 APP_NAME = "Live Translator"
-APP_VERSION = "0.9.32"
+APP_VERSION = "0.9.33"
 KEYRING_SERVICE = "local.live-translator"
 KEYRING_ACCOUNT = "edcom-api-key"
 KEYRING_LICENSE_ACCOUNT = "license-key"
@@ -2194,17 +2194,29 @@ class TranslatorWindow(QWidget):
                     prev = getattr(self, "win_prev_render", "")
                     if prev and not is_virtual_device(prev):
                         incoming_output_arg = prev
-                # Naushnik ulangan bo'lsa feedback-gate KERAK EMAS: tarjima
-                # quloqqa chiqadi, mikrofon uni eshitmaydi. Gate'siz siz boshqa
-                # odam gapirayotganda ham gapira olasiz (to'liq ikki tomonlama).
-                # Karnayда gate qoladi (echo oldini olish uchun).
+                # FEEDBACK-GATE O'CHIRILDI (v0.9.33). Sabab: suhbatdosh
+                # gapirganda incoming tarjima karnayda deyarli UZLUKSIZ ijro
+                # etiladi (kechikish + silliqlash tufayli), gate esa shu paytda
+                # mikrofonni jim qiladi — natijada foydalanuvchi gapi HECH
+                # QACHON o'tmasdi ("gapirish umuman ishlamayapti"). Endi
+                # mikrofon doim ochiq: gapingiz doim tarjima bo'lib meetingga
+                # boradi. NAUSHNIK ishlatilsa echo yo'q (tarjima quloqqa
+                # chiqadi, mikrofon eshitmaydi); karnay bilan suhbatdosh o'z
+                # ovozini takror eshitishi mumkin — UI shuni ogohlantiradi.
                 incoming_out_name = (
                     incoming_output_arg
                     if not incoming_output_arg.isdigit()
                     else routes.incoming_output.name
                 )
-                if self._is_headphone_output(incoming_out_name):
-                    process_arguments.append("--no-gate")
+                process_arguments.append("--no-gate")
+                if not self._is_headphone_output(incoming_out_name):
+                    self.route_hint.setText(
+                        "🎧 Ikki tomonlama uchun NAUSHNIK ulang — aks holda "
+                        "suhbatdosh sizning ovozingizni takror eshitishi mumkin."
+                    )
+                    self.route_hint.setVisible(True)
+                else:
+                    self.route_hint.setVisible(False)
                 process_arguments.extend(
                     [
                         "--duplex",
