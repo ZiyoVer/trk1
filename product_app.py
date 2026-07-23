@@ -172,7 +172,7 @@ from system_audio import (
 
 
 APP_NAME = "Live Translator"
-APP_VERSION = "0.9.29"
+APP_VERSION = "0.9.30"
 KEYRING_SERVICE = "local.live-translator"
 KEYRING_ACCOUNT = "edcom-api-key"
 KEYRING_LICENSE_ACCOUNT = "license-key"
@@ -934,28 +934,10 @@ class TranslatorWindow(QWidget):
         self.tray_stop_action = menu.addAction(t("Tarjimani to‘xtatish"))
         self.tray_stop_action.triggered.connect(self.stop_translator)
         menu.addSeparator()
-        self.tray_monitor_action = menu.addAction(t("Tarjimani o‘zim ham eshitay"))
-        self.tray_monitor_action.setCheckable(True)
-        self.tray_monitor_action.setChecked(self.monitor_enabled)
-        self.tray_monitor_action.toggled.connect(self._toggle_monitor)
+        # Sodda tray (foydalanuvchi talabi): monitor ("o‘zim ham eshitay"),
+        # log yig‘ish (ZIP), mikrofon/karnay tiklash — olib tashlandi.
         open_logs_action = menu.addAction(t("Loglarni ochish"))
         open_logs_action.triggered.connect(self._open_logs_folder)
-        logs_action = menu.addAction(t("Loglarni yig‘ish (ZIP)"))
-        logs_action.triggered.connect(self.export_logs)
-        if platform.system() == "Darwin":
-            restore_mic_action = menu.addAction(t("Tizim mikrofonini tiklash"))
-            restore_mic_action.setToolTip(
-                "Boshqa ilovalarda mikrofon jim bo'lsa: tizim mikrofonini "
-                "virtual kabeldan fizik mikrofonga qaytaradi."
-            )
-            restore_mic_action.triggered.connect(self._restore_physical_microphone)
-        if platform.system() == "Windows":
-            restore_spk_action = menu.addAction(t("Ovozni karnayга qaytarish"))
-            restore_spk_action.setToolTip(
-                "Ovoz eshitilmasa: default karnayni virtual kabeldan "
-                "haqiqiy karnayga qaytaradi."
-            )
-            restore_spk_action.triggered.connect(self._restore_speaker_clicked)
         menu.addSeparator()
         # Interfeys tili — avtomatik aniqlanadi, shu yerdan o'zgartiriladi.
         self.tray_ui_lang_menu = menu.addMenu(t("Interfeys tili"))
