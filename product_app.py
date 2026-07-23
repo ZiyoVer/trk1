@@ -80,7 +80,6 @@ import keyring
 import sounddevice as sd
 from dotenv import dotenv_values
 from PySide6.QtCore import (
-    QEvent,
     QObject,
     QProcess,
     QProcessEnvironment,
@@ -172,7 +171,7 @@ from system_audio import (
 
 
 APP_NAME = "Live Translator"
-APP_VERSION = "0.9.34"
+APP_VERSION = "0.9.35"
 KEYRING_SERVICE = "local.live-translator"
 KEYRING_ACCOUNT = "edcom-api-key"
 KEYRING_LICENSE_ACCOUNT = "license-key"
@@ -3035,26 +3034,6 @@ def run_gui() -> int:
     app.setApplicationName(APP_NAME)
     app.setOrganizationName("Live Translator")
 
-    class _ActivateFilter(QObject):
-        """Ilova ustiga bosilganda (Finder/Launchpad/Cmd+Tab) oynani qaytaradi.
-
-        LSUIElement ilovasining Dock belgisi yo'q, shuning uchun yashirilgan
-        oyna "yo'qolib qolgandek" tuyulardi.
-        """
-
-        def __init__(self, target) -> None:  # noqa: ANN001
-            super().__init__()
-            self.target = target
-
-        def eventFilter(self, obj, event) -> bool:  # noqa: ANN001, N802
-            if (
-                event.type() == QEvent.Type.ApplicationActivate
-                and self.target is not None
-                and not self.target.isVisible()
-            ):
-                self.target._show_window()
-            return False
-
     # Tarjima ishlayotganda oyna yopilsa ilova menyu panelida yashaydi.
     app.setQuitOnLastWindowClosed(False)
     window = TranslatorWindow()
@@ -3072,8 +3051,14 @@ def run_gui() -> int:
                 3500,
             )
     else:
-        activate_filter = _ActivateFilter(window)
-        app.installEventFilter(activate_filter)
+        # Windows/Linux: oyna dastlab ko'rinadi, lekin macOS-uslub
+        # ApplicationActivate filtri O'RNATILMAYDI. Windows'da tray
+        # belgisini bosish (chap yoki o'ng) ilovani aktivlashtiradi —
+        # filtr esa buni ushlab oynani "o'z-o'zidan" ochib yuborardi
+        # (foydalanuvchi shikoyati: tray'ga bossa oyna chiqardi). Endi
+        # yashirilgan oyna faqat tray menyusidagi "Oynani ko'rsatish"
+        # orqali qaytariladi. macOS menu-bar rejimida ham filtr kerak
+        # emas — u yerda belgi orqali boshqariladi.
         window.show()
     if auto_start:
         QTimer.singleShot(1_200, window.start_translator)
