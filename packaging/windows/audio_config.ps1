@@ -117,7 +117,10 @@ namespace LTAudio {
     static bool IsHeadphone(string n) {
       if (n == null) return false; n = n.ToLowerInvariant();
       return n.Contains("headphone") || n.Contains("headset")
-          || n.Contains("наушник") || n.Contains("гарнитур");
+          || n.Contains("наушник") || n.Contains("гарнитур")
+          || n.Contains("quloqchin") || n.Contains("airpods")
+          || n.Contains("earbud") || n.Contains("hands-free")
+          || n.Contains("handsfree");
     }
     // "hifi:N" / "vbcable:N" — o'sha oiladagi ANIQ nusxa. Aks holda oddiy
     // quyi-satr moslash (eski xatti-harakat).
@@ -202,6 +205,26 @@ namespace LTAudio {
       }
       return null;
     }
+    // Default'ni O'ZGARTIRMASDAN, tarjima chiqishi uchun eng mos ACTIVE fizik
+    // qurilma NOMINI qaytaradi: avval naushnik/garnitura (ulangan bo'lsa),
+    // keyin istalgan fizik karnay. Faqat ACTIVE endpoint'lar sanaladi —
+    // shuning uchun naushnik topilsa = HAQIQATAN ulangan (bo'sh uya ACTIVE
+    // emas). Ilova incoming tarjimani shu qurilmaga chiqaradi.
+    public static string FindPhysicalPreferred(int flow) {
+      var en = (IMMDeviceEnumerator)(new MMDeviceEnumerator());
+      IMMDeviceCollection col; en.EnumAudioEndpoints(flow, 1 /*ACTIVE*/, out col);
+      int n; col.GetCount(out n);
+      for (int pass = 0; pass < 2; pass++) {
+        for (int i = 0; i < n; i++) {
+          IMMDevice d; col.Item(i, out d);
+          string name = DeviceName(d);
+          if (IsVirtual(name)) continue;
+          if (pass == 0 && !IsHeadphone(name)) continue;
+          return name;
+        }
+      }
+      return null;
+    }
   }
 }
 "@
@@ -221,5 +244,6 @@ switch ($Action) {
   }
   "restorerender"  { $r = [LTAudio.Cfg]::SetDefaultPhysicalPreferred(0); if ($r) { "OK: $r" } else { "NOT_FOUND" } }
   "restorecapture" { $c = [LTAudio.Cfg]::SetDefaultByName(1, "", $true); if ($c) { "OK: $c" } else { "NOT_FOUND" } }
+  "findoutput" { $r = [LTAudio.Cfg]::FindPhysicalPreferred(0); if ($r) { $r } else { "" } }
   default { "UNKNOWN_ACTION" }
 }

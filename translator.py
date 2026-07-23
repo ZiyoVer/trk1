@@ -268,17 +268,39 @@ class PushToTalkGate:
 
     drop_reason = None
 
-    def __init__(self, key_down_check):  # noqa: ANN001
+    # Tugma QO'YIB YUBORILGACH mikrofon shuncha vaqt OCHIQ qoladi: so'zning
+    # oxiri va TARJIMA to'liq chiqib ulgurishi uchun. Aks holda release
+    # tarjimani yarimda kesardi (foydalanuvchi: "Ctrl'dan qo'limni olsam
+    # inglizcha birdan o'chyapti"). Trailing tabiiy sukunat Gemini'ga "nutq
+    # tugadi" signalini beradi -> tarjima oxirigacha chiqadi. Bu payt siz
+    # gapirib bo'lgansiz (karnayda incoming hali yo'q) -> feedback xavfi past.
+    RELEASE_HANGOVER_SECONDS = 1.5
+
+    def __init__(self, key_down_check, clock=time.monotonic):  # noqa: ANN001
         self._key_down = key_down_check
+        self._clock = clock
+        self._last_down = None
 
     def should_drop(self) -> bool:
         if self._key_down is None:
             return False  # tugma tekshiruvi yo'q -> mikrofon ochiq qoladi
         try:
-            return not self._key_down()
+            down = self._key_down()
         except Exception:
             # Tugma holatini o'qib bo'lmasa — gapirish yo'qolib qolmasin.
             return False
+        now = self._clock()
+        if down:
+            self._last_down = now
+            return False  # tugma bosilgan -> mic ochiq
+        # Tugma qo'yildi: hangover ichida mic hali ochiq (so'z dumi + tarjima
+        # to'liq chiqsin), keyin jim.
+        if (
+            self._last_down is not None
+            and now - self._last_down < self.RELEASE_HANGOVER_SECONDS
+        ):
+            return False
+        return True  # mic jim
 
 
 class Translator:

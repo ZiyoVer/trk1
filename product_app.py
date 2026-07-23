@@ -171,7 +171,7 @@ from system_audio import (
 
 
 APP_NAME = "Live Translator"
-APP_VERSION = "0.9.38"
+APP_VERSION = "0.9.39"
 KEYRING_SERVICE = "local.live-translator"
 KEYRING_ACCOUNT = "edcom-api-key"
 KEYRING_LICENSE_ACCOUNT = "license-key"
@@ -2186,13 +2186,22 @@ class TranslatorWindow(QWidget):
                         self._win_cable_match(routes.incoming_input.name),
                         self._win_cable_match(routes.outgoing_output.name),
                     )
-                    # Incoming tarjima (UZ) haqiqiy karnayga NOM bilan
-                    # chiqadi (tinglashdagi kabi): default endi kabel bo'lgani
-                    # uchun index/avto-tanlash bo'sh quloqchin uyasi yoki
-                    # kabelni tanlab, foydalanuvchi eshitmasdi.
-                    prev = getattr(self, "win_prev_render", "")
-                    if prev and not is_virtual_device(prev):
-                        incoming_output_arg = prev
+                    # Incoming tarjima (UZ) haqiqiy chiqishga NOM bilan boradi.
+                    # NAUSHNIK ulangan bo'lsa — naushnikka, aks holda fizik
+                    # karnayga. findoutput faqat ACTIVE (ulangan) qurilmalardan
+                    # naushnikni afzal ko'radi: bo'sh quloqchin uyasi ACTIVE
+                    # bo'lmagani uchun, naushnik topilsa = haqiqatan ulangan.
+                    chosen = ""
+                    try:
+                        chosen = self._win_audio("findoutput").strip()
+                    except Exception:
+                        chosen = ""
+                    if chosen and not is_virtual_device(chosen):
+                        incoming_output_arg = chosen
+                    else:
+                        prev = getattr(self, "win_prev_render", "")
+                        if prev and not is_virtual_device(prev):
+                            incoming_output_arg = prev
                 # FEEDBACK-GATE O'CHIRILDI (v0.9.33). Sabab: suhbatdosh
                 # gapirganda incoming tarjima karnayda deyarli UZLUKSIZ ijro
                 # etiladi (kechikish + silliqlash tufayli), gate esa shu paytda
