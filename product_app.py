@@ -172,7 +172,7 @@ from system_audio import (
 
 
 APP_NAME = "Live Translator"
-APP_VERSION = "0.9.30"
+APP_VERSION = "0.9.31"
 KEYRING_SERVICE = "local.live-translator"
 KEYRING_ACCOUNT = "edcom-api-key"
 KEYRING_LICENSE_ACCOUNT = "license-key"
@@ -391,7 +391,7 @@ class TranslatorWindow(QWidget):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle(APP_NAME)
-        self.setFixedSize(640, 680)
+        self.setFixedSize(640, 530)
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
             | Qt.WindowType.WindowStaysOnTopHint
@@ -814,6 +814,10 @@ class TranslatorWindow(QWidget):
         duplex_caption_layout.addWidget(self.duplex_outgoing_original_text)
         duplex_caption_layout.addWidget(self.duplex_outgoing_target_text)
         layout.addWidget(self.duplex_outgoing_caption_panel)
+
+        # Ortiqcha vertikal joy shu yerga yig'iladi (yuqoridagi label/panellar
+        # cho'zilmaydi) — tugmalar doim pastda, interfeys ixcham.
+        layout.addStretch(1)
 
         actions = QHBoxLayout()
         actions.setSpacing(9)
@@ -1902,7 +1906,7 @@ class TranslatorWindow(QWidget):
         self.duplex_outgoing_audio_panel.setVisible(False)
         self.duplex_outgoing_caption_panel.setVisible(duplex)
         self.language_label.setText("Tillar")
-        self.setFixedSize(640, 720)
+        self.setFixedSize(640, 530)
         self._reset_captions()
         if apply_devices:
             self._apply_direction_devices(mode)
