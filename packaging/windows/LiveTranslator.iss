@@ -1,5 +1,5 @@
 #define MyAppName "Live Translator"
-#define MyAppVersion "0.9.24"
+#define MyAppVersion "0.9.25"
 #define MyAppPublisher "Live Translator"
 #define MyAppExeName "Live Translator.exe"
 
@@ -24,6 +24,11 @@ PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible arm64
 ArchitecturesInstallIn64BitMode=x64compatible arm64
 UninstallDisplayIcon={app}\{#MyAppExeName}
+; MUHIM: ilova tray'da ochiq turganda .exe qulflanib, yangilanish
+; o'rnatilmasdi (foydalanuvchi eski nusxada qolib ketardi). Restart
+; Manager orqali ishlab turgan dasturni MAJBURAN yopamiz.
+CloseApplications=force
+RestartApplications=no
 
 [Files]
 Source: "..\..\dist\product\Live Translator\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs

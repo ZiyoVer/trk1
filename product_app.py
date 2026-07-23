@@ -171,7 +171,7 @@ from system_audio import (
 
 
 APP_NAME = "Live Translator"
-APP_VERSION = "0.9.24"
+APP_VERSION = "0.9.25"
 KEYRING_SERVICE = "local.live-translator"
 KEYRING_ACCOUNT = "edcom-api-key"
 KEYRING_LICENSE_ACCOUNT = "license-key"
@@ -1829,8 +1829,13 @@ class TranslatorWindow(QWidget):
         self.win_prev_capture = ""
 
     def restore_windows_default_speaker(self, match: str = "") -> str:
-        """Default karnay/mikrofonni FIZIK qurilmaga qaytaradi (qo'lda tugma)."""
-        return self._win_audio("restore")
+        """Default karnayni FIZIK qurilmaga qaytaradi (qo'lda tugma).
+
+        "restorerender" "OK: <nom>" qaytaradi — chaqiruvchi ("KARNAY
+        TIKLANDI") shu prefiksni kutadi. Ilgari "restore" ishlatilardi, u
+        "render=..." qaytarardi va tugma ISHLASA HAM "topilmadi" deb
+        yozardi (soxta ogohlantirish)."""
+        return self._win_audio("restorerender")
 
     def _driver_installer_ready(self, path: str) -> None:
         self.driver_button.setEnabled(True)
