@@ -171,7 +171,7 @@ from system_audio import (
 
 
 APP_NAME = "Live Translator"
-APP_VERSION = "0.9.36"
+APP_VERSION = "0.9.37"
 KEYRING_SERVICE = "local.live-translator"
 KEYRING_ACCOUNT = "edcom-api-key"
 KEYRING_LICENSE_ACCOUNT = "license-key"
@@ -2207,15 +2207,25 @@ class TranslatorWindow(QWidget):
                     if not incoming_output_arg.isdigit()
                     else routes.incoming_output.name
                 )
-                process_arguments.append("--no-gate")
-                if not self._is_headphone_output(incoming_out_name):
+                if self._is_headphone_output(incoming_out_name):
+                    # Naushnik: mikrofon karnayni eshitmaydi -> feedback
+                    # yo'q -> gate KERAK EMAS -> to'liq ikki tomonlama
+                    # (istalgan payt gapirish).
+                    process_arguments.append("--no-gate")
+                    self.route_hint.setVisible(False)
+                else:
+                    # Karnay: --no-gate BERILMAYDI -> feedback-gate YOQILADI.
+                    # Incoming tarjima karnayda yangraganda gapirish mikrofoni
+                    # avtomatik jim bo'ladi — aks holda mikrofon karnaydagi
+                    # tarjimani qayta ushlab CHEKSIZ HALQA hosil qiladi (o'z
+                    # ovozi qaytadi, "rasvo"). Foydalanuvchi suhbatdosh jim
+                    # bo'lganda gapiradi. To'liq erkin ikki tomonlama = naushnik.
                     self.route_hint.setText(
-                        "🎧 Ikki tomonlama uchun NAUSHNIK ulang — aks holda "
-                        "suhbatdosh sizning ovozingizni takror eshitishi mumkin."
+                        "🎧 To‘liq ikki tomonlama (istalgan payt gapirish) uchun "
+                        "NAUSHNIK ulang. Karnay bilan: suhbatdosh gapirmayotganda "
+                        "gapiring — aks holda ovoz qaytadi."
                     )
                     self.route_hint.setVisible(True)
-                else:
-                    self.route_hint.setVisible(False)
                 process_arguments.extend(
                     [
                         "--duplex",
