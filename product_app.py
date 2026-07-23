@@ -171,7 +171,7 @@ from system_audio import (
 
 
 APP_NAME = "Live Translator"
-APP_VERSION = "0.9.26"
+APP_VERSION = "0.9.27"
 KEYRING_SERVICE = "local.live-translator"
 KEYRING_ACCOUNT = "edcom-api-key"
 KEYRING_LICENSE_ACCOUNT = "license-key"
@@ -2289,8 +2289,13 @@ class TranslatorWindow(QWidget):
                         pair.target,
                         "--source-language",
                         pair.source,
+                        # Kirish ham NOM bilan (index EMAS). Gapirishda ilova
+                        # default mikrofonni kabelga o'zgartiradi — bu qurilma
+                        # index'larini suradi va index bilan uzatilgan kirish
+                        # NOTO'G'RI qurilmani (kabelni) ochib, "input va output
+                        # bir kabel" feedback xatosini berardi.
                         "--input-device",
-                        str(input_id),
+                        input_name,
                         "--output-device",
                         output_arg,
                     ]
