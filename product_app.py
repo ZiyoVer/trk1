@@ -141,6 +141,7 @@ from language_config import (
     APP_MODES,
     PRODUCT_MODES,
     SOURCE_LANGUAGES,
+    TARGET_CODES,
     TARGET_LANGUAGES,
     LanguagePair,
     change_source,
@@ -171,7 +172,7 @@ from system_audio import (
 
 
 APP_NAME = "Live Translator"
-APP_VERSION = "0.9.28"
+APP_VERSION = "0.9.29"
 KEYRING_SERVICE = "local.live-translator"
 KEYRING_ACCOUNT = "edcom-api-key"
 KEYRING_LICENSE_ACCOUNT = "license-key"
@@ -450,8 +451,8 @@ class TranslatorWindow(QWidget):
             )
             for mode in PRODUCT_MODES
         }
-        saved_mode = str(self.settings.value("translation/active_mode", "incoming"))
-        self.initial_mode = saved_mode if saved_mode in APP_MODE_BY_CODE else "incoming"
+        # Ilova endi faqat ikki tomonlama ishlaydi.
+        self.initial_mode = "duplex"
         self.language_change_in_progress = False
         self.api_key = self._load_api_key()
         self.control_url = self._load_keyring(KEYRING_CONTROL_URL_ACCOUNT) or self._default_control_url()
@@ -519,13 +520,8 @@ class TranslatorWindow(QWidget):
         layout.setSpacing(9)
 
         header = QHBoxLayout()
-        title = QLabel("CHARON")
+        title = QLabel("LIVE TRANSLATOR")
         title.setStyleSheet("font-size: 20px; font-weight: 800; letter-spacing: 0.2px;")
-        voice = QLabel("LIVE TRANSLATOR")
-        voice.setStyleSheet(
-            "background: #17253a; color: #a9b8cc; border-radius: 7px; "
-            "padding: 4px 7px; font-size: 9px; font-weight: 700;"
-        )
         self.status = QLabel("●  TAYYOR")
         self.status.setStyleSheet("color: #8fa0b7; font-size: 10px; font-weight: 700;")
         settings = QPushButton("⚙")
@@ -561,7 +557,6 @@ class TranslatorWindow(QWidget):
         )
         close.clicked.connect(self.close)
         header.addWidget(title)
-        header.addWidget(voice)
         header.addWidget(self.status)
         header.addStretch()
         header.addWidget(settings)
@@ -600,87 +595,90 @@ class TranslatorWindow(QWidget):
         layout.addWidget(direction_label)
         direction_label.setVisible(False)
         layout.addWidget(self.direction)
+        # Faqat ikki tomonlama — rejim tanlash ko'rinmaydi.
+        self.direction.setVisible(False)
 
-        self.language_label = QLabel("Til yo‘nalishi")
+        # === TILLAR — sodda panel (faqat ikki tomonlama) ===
+        self.language_label = QLabel("Tillar")
         self.language_label.setStyleSheet("color: #98a8bd; font-size: 11px; font-weight: 650;")
         layout.addWidget(self.language_label)
 
-        language_row = QHBoxLayout()
-        language_row.setSpacing(8)
-        source_group = QVBoxLayout()
-        source_group.setSpacing(4)
-        source_label = QLabel("Qaysi tildan")
-        source_label.setStyleSheet("color: #8798af; font-size: 10px; font-weight: 600;")
-        self.source_language_select = QComboBox()
-        self.source_language_select.setToolTip(
-            "Eshitiladigan til. Aralash tilli meeting uchun Avtomatikni tanlang."
+        simple_row = QHBoxLayout()
+        simple_row.setSpacing(8)
+        your_group = QVBoxLayout()
+        your_group.setSpacing(4)
+        your_label = QLabel("Mening tilim")
+        your_label.setStyleSheet("color: #8798af; font-size: 10px; font-weight: 600;")
+        self.your_language_select = QComboBox()
+        self.your_language_select.setToolTip(
+            "Siz eshitadigan va gapiradigan til (masalan O‘zbekcha)"
         )
+        for language in TARGET_LANGUAGES:
+            self.your_language_select.addItem(language.name, language.code)
+        your_group.addWidget(your_label)
+        your_group.addWidget(self.your_language_select)
+
+        arrow_group = QVBoxLayout()
+        arrow_group.setSpacing(4)
+        arrow_spacer = QLabel("")
+        arrow_spacer.setFixedHeight(11)
+        simple_arrow = QLabel("→")
+        simple_arrow.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        simple_arrow.setFixedWidth(28)
+        simple_arrow.setStyleSheet("color: #7dd3fc; font-size: 16px;")
+        arrow_group.addWidget(arrow_spacer)
+        arrow_group.addWidget(simple_arrow)
+
+        meeting_group = QVBoxLayout()
+        meeting_group.setSpacing(4)
+        meeting_label = QLabel("Tarjima tili")
+        meeting_label.setStyleSheet("color: #8798af; font-size: 10px; font-weight: 600;")
+        self.meeting_language_select = QComboBox()
+        self.meeting_language_select.setToolTip(
+            "Siz gapirganda boshqa odamga shu tilda yetkaziladi (masalan Ingliz)"
+        )
+        for language in TARGET_LANGUAGES:
+            self.meeting_language_select.addItem(language.name, language.code)
+        meeting_group.addWidget(meeting_label)
+        meeting_group.addWidget(self.meeting_language_select)
+
+        simple_row.addLayout(your_group, 1)
+        simple_row.addLayout(arrow_group)
+        simple_row.addLayout(meeting_group, 1)
+        layout.addLayout(simple_row)
+
+        # === Eski til-widgetlari: YASHIRIN. Mavjud ichki logika (mode_pairs,
+        # ishga tushirish) shular orqali ishlaydi; foydalanuvchi esa
+        # yuqoridagi sodda panelni ko'radi. ===
+        self._legacy_lang_frame = QFrame()
+        legacy_layout = QVBoxLayout(self._legacy_lang_frame)
+        legacy_layout.setContentsMargins(0, 0, 0, 0)
+        self.source_language_select = QComboBox()
         for language in SOURCE_LANGUAGES:
             self.source_language_select.addItem(language.name, language.code)
-        source_group.addWidget(source_label)
-        source_group.addWidget(self.source_language_select)
-
-        swap_group = QVBoxLayout()
-        swap_group.setSpacing(4)
-        swap_spacer = QLabel("")
-        swap_spacer.setFixedHeight(11)
-        self.swap_languages_button = QPushButton("⇄")
-        self.swap_languages_button.setFixedSize(42, 38)
-        self.swap_languages_button.setToolTip("Manba va tarjima tillarini almashtirish")
-        self.swap_languages_button.setStyleSheet(
-            "QPushButton { background: #20334c; color: #7dd3fc; font-size: 18px; padding: 0; } "
-            "QPushButton:hover { background: #29415f; color: white; } "
-            "QPushButton:pressed { background: #15263a; } "
-            "QPushButton:disabled { background: #17263a; color: #52657b; }"
-        )
-        self.swap_languages_button.clicked.connect(self._swap_languages)
-        swap_group.addWidget(swap_spacer)
-        swap_group.addWidget(self.swap_languages_button)
-
-        target_group = QVBoxLayout()
-        target_group.setSpacing(4)
-        target_label = QLabel("Qaysi tilga")
-        target_label.setStyleSheet("color: #8798af; font-size: 10px; font-weight: 600;")
         self.target_language_select = QComboBox()
-        self.target_language_select.setToolTip("Tarjima ovozi va subtitr chiqadigan til")
         for language in TARGET_LANGUAGES:
             self.target_language_select.addItem(language.name, language.code)
-        target_group.addWidget(target_label)
-        target_group.addWidget(self.target_language_select)
-
-        language_row.addLayout(source_group, 1)
-        language_row.addLayout(swap_group)
-        language_row.addLayout(target_group, 1)
-        layout.addLayout(language_row)
-
+        self.swap_languages_button = QPushButton("⇄")
+        self.swap_languages_button.clicked.connect(self._swap_languages)
         self.duplex_outgoing_language_panel = QFrame()
-        duplex_language_layout = QVBoxLayout(self.duplex_outgoing_language_panel)
-        duplex_language_layout.setContentsMargins(0, 0, 0, 0)
-        duplex_language_layout.setSpacing(4)
-        duplex_language_title = QLabel("GAPIRISH TILLARI  ·  MIKROFON → ZOOM")
-        duplex_language_title.setStyleSheet(
-            "color: #60a5fa; font-size: 9px; font-weight: 800;"
-        )
-        duplex_language_layout.addWidget(duplex_language_title)
-        duplex_language_row = QHBoxLayout()
-        duplex_language_row.setSpacing(8)
         self.duplex_outgoing_source = QComboBox()
-        self.duplex_outgoing_source.setToolTip("Siz gapiradigan til")
         for language in SOURCE_LANGUAGES:
             self.duplex_outgoing_source.addItem(language.name, language.code)
-        duplex_arrow = QLabel("→")
-        duplex_arrow.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        duplex_arrow.setFixedWidth(28)
-        duplex_arrow.setStyleSheet("color: #7dd3fc; font-size: 16px;")
         self.duplex_outgoing_target = QComboBox()
-        self.duplex_outgoing_target.setToolTip("Zoom qatnashchilari eshitadigan til")
         for language in TARGET_LANGUAGES:
             self.duplex_outgoing_target.addItem(language.name, language.code)
-        duplex_language_row.addWidget(self.duplex_outgoing_source, 1)
-        duplex_language_row.addWidget(duplex_arrow)
-        duplex_language_row.addWidget(self.duplex_outgoing_target, 1)
-        duplex_language_layout.addLayout(duplex_language_row)
-        layout.addWidget(self.duplex_outgoing_language_panel)
+        for _legacy_widget in (
+            self.source_language_select,
+            self.target_language_select,
+            self.swap_languages_button,
+            self.duplex_outgoing_language_panel,
+            self.duplex_outgoing_source,
+            self.duplex_outgoing_target,
+        ):
+            legacy_layout.addWidget(_legacy_widget)
+        layout.addWidget(self._legacy_lang_frame)
+        self._legacy_lang_frame.setVisible(False)
 
         self.signal_label = QLabel("OVOZ YO‘LI  ·  QAYERDAN → QAYERGA")
         self.signal_label.setStyleSheet("color: #74859d; font-size: 9px; font-weight: 700;")
@@ -854,6 +852,13 @@ class TranslatorWindow(QWidget):
         self.duplex_outgoing_target.currentIndexChanged.connect(
             self._duplex_outgoing_target_changed
         )
+        self._init_simple_languages()
+        self.your_language_select.currentIndexChanged.connect(
+            self._apply_simple_languages
+        )
+        self.meeting_language_select.currentIndexChanged.connect(
+            self._apply_simple_languages
+        )
         self._build_tray()
         self._sync_mode_ui(apply_devices=False)
         self._refresh_audio_devices()
@@ -917,43 +922,12 @@ class TranslatorWindow(QWidget):
         top_show_action = menu.addAction(t("Oynani ko‘rsatish"))
         top_show_action.triggered.connect(self._show_window)
         menu.addSeparator()
-        mode_group = QActionGroup(self)
-        mode_group.setExclusive(True)
+        # Ilova faqat ikki tomonlama — tray'dan rejim va eski til menyulari
+        # olib tashlandi (til asosiy oynadagi sodda panelda). Mavjud kod bilan
+        # mos bo'lishi uchun ro'yxatlar bo'sh qoldiriladi.
         self.tray_mode_actions: list[QAction] = []
-        for index, mode in enumerate(APP_MODES):
-            action = menu.addAction(t(mode.title))
-            action.setCheckable(True)
-            mode_group.addAction(action)
-            action.triggered.connect(
-                lambda _checked=False, position=index: self._tray_mode_selected(position)
-            )
-            self.tray_mode_actions.append(action)
-        menu.addSeparator()
-        # Tillar — oynani ochmasdan almashtirish uchun.
         self.tray_source_actions: list[QAction] = []
         self.tray_target_actions: list[QAction] = []
-        self.tray_source_menu = menu.addMenu(t("Manba tili"))
-        source_group = QActionGroup(self)
-        source_group.setExclusive(True)
-        for language in SOURCE_LANGUAGES:
-            action = self.tray_source_menu.addAction(language.name)
-            action.setCheckable(True)
-            source_group.addAction(action)
-            action.triggered.connect(
-                lambda _checked=False, code=language.code: self._tray_source_selected(code)
-            )
-            self.tray_source_actions.append(action)
-        self.tray_target_menu = menu.addMenu(t("Tarjima tili"))
-        target_group = QActionGroup(self)
-        target_group.setExclusive(True)
-        for language in TARGET_LANGUAGES:
-            action = self.tray_target_menu.addAction(language.name)
-            action.setCheckable(True)
-            target_group.addAction(action)
-            action.triggered.connect(
-                lambda _checked=False, code=language.code: self._tray_target_selected(code)
-            )
-            self.tray_target_actions.append(action)
         menu.addSeparator()
         self.tray_start_action = menu.addAction(t("Tarjimani boshlash"))
         self.tray_start_action.triggered.connect(self.start_translator)
@@ -1186,8 +1160,6 @@ class TranslatorWindow(QWidget):
         for action, language in zip(self.tray_target_actions, TARGET_LANGUAGES):
             action.setChecked(language.code == pair.target)
             action.setEnabled(not active)
-        self.tray_source_menu.setTitle(t("Manba tili: {}", language_caption(pair.source)))
-        self.tray_target_menu.setTitle(t("Tarjima tili: {}", language_caption(pair.target)))
         self.tray_start_action.setEnabled(not active and ready)
         self.tray_stop_action.setEnabled(active)
 
@@ -1407,11 +1379,9 @@ class TranslatorWindow(QWidget):
             try:
                 routes = self._duplex_routes()
                 validate_duplex_routes(routes)
-                self.route_hint.setText(
-                    "Ikki yo‘nalish birga ishlaydi. Zoom/Meet microphone: "
-                    f"“Same as System” yoki “{routes.outgoing_output.name}”; "
-                    f"speaker: “Same as System” yoki “{routes.incoming_input.name}”."
-                )
+                # Sariq ogohlantirish olib tashlandi (foydalanuvchi talabi) —
+                # qurilmalarni ilova o'zi avtomatik sozlaydi.
+                self.route_hint.setText("")
             except (TypeError, ValueError) as error:
                 self.route_hint.setText(str(error))
             if hasattr(self, "start_button"):
@@ -1898,7 +1868,9 @@ class TranslatorWindow(QWidget):
         QMessageBox.critical(self, "Driver o‘rnatilmadi", error)
 
     def _current_mode(self) -> str:
-        return APP_MODES[self.direction.currentIndex()].code
+        # Ilova endi FAQAT ikki tomonlama (foydalanuvchi talabi) — rejim
+        # tanlash olib tashlandi.
+        return "duplex"
 
     def _current_pair(self) -> LanguagePair:
         mode = self._current_mode()
@@ -1947,12 +1919,8 @@ class TranslatorWindow(QWidget):
         self.duplex_outgoing_language_panel.setVisible(duplex)
         self.duplex_outgoing_audio_panel.setVisible(False)
         self.duplex_outgoing_caption_panel.setVisible(duplex)
-        self.language_label.setText(
-            "Meeting sizga qanday tarjima qilinadi"
-            if duplex
-            else "Til yo‘nalishi"
-        )
-        self.setFixedSize(640, 750 if duplex else 560)
+        self.language_label.setText("Tillar")
+        self.setFixedSize(640, 720)
         self._reset_captions()
         if apply_devices:
             self._apply_direction_devices(mode)
@@ -1986,6 +1954,58 @@ class TranslatorWindow(QWidget):
         self.settings.sync()
         self._refresh_direction_labels()
         self._sync_mode_ui(apply_devices=False)
+
+    def _init_simple_languages(self) -> None:
+        """Sodda til panelini saqlangan qiymatlardan to'ldiradi (signalsiz)."""
+        your = self.mode_pairs["outgoing"].source
+        if your not in TARGET_CODES:
+            your = "uz"
+        meeting = self.mode_pairs["outgoing"].target
+        if meeting not in TARGET_CODES or meeting == your:
+            meeting = "en" if your != "en" else "ru"
+        for combo, code in (
+            (self.your_language_select, your),
+            (self.meeting_language_select, meeting),
+        ):
+            combo.blockSignals(True)
+            self._set_combo_code(combo, code)
+            combo.blockSignals(False)
+        self._apply_simple_languages(persist=False)
+
+    def _apply_simple_languages(self, _index: int = -1, persist: bool = True) -> None:
+        """Sodda paneldan ikki tomonlama til juftlarini yasaydi.
+
+        "Mening tilim" = siz eshitasiz VA gapirasiz. "Tarjima tili" = siz
+        gapirganda boshqa odamga shu tilda boradi. Eshitishda manba = AUTO.
+        """
+        your = str(self.your_language_select.currentData() or "uz")
+        meeting = str(self.meeting_language_select.currentData() or "en")
+        if meeting == your:
+            meeting = next(c for c in ("en", "ru", "es", "uz") if c != your)
+            self.meeting_language_select.blockSignals(True)
+            self._set_combo_code(self.meeting_language_select, meeting)
+            self.meeting_language_select.blockSignals(False)
+        self.mode_pairs["incoming"] = LanguagePair("auto", your)
+        self.mode_pairs["outgoing"] = LanguagePair(your, meeting)
+        # Yashirin eski combolarni ham moslaymiz (ichki logika ular orqali
+        # ishlashi mumkin) — signal bloklab.
+        for combo, code in (
+            (self.source_language_select, "auto"),
+            (self.target_language_select, your),
+            (self.duplex_outgoing_source, your),
+            (self.duplex_outgoing_target, meeting),
+        ):
+            combo.blockSignals(True)
+            self._set_combo_code(combo, code)
+            combo.blockSignals(False)
+        if persist:
+            self.settings.setValue("translation/incoming/source", "auto")
+            self.settings.setValue("translation/incoming/target", your)
+            self.settings.setValue("translation/outgoing/source", your)
+            self.settings.setValue("translation/outgoing/target", meeting)
+            self.settings.sync()
+        if getattr(self, "tray", None) is not None:
+            self._sync_tray()
 
     def _source_language_changed(self, _index: int) -> None:
         if self.language_change_in_progress:
@@ -2318,7 +2338,7 @@ class TranslatorWindow(QWidget):
         except (TypeError, ValueError, RuntimeError) as error:
             self._restore_system_audio()
             self._set_status("AUDIO YO‘NALTIRISH XATOSI", "#ef4444")
-            self.source_language.setText("TEXNIK HOLAT")
+            self.source_language.setText("Suhbatdoshingiz gapiradi")
             self.source_text.setText(str(error)[:180])
             return
         process = QProcess(self)
@@ -2602,15 +2622,13 @@ class TranslatorWindow(QWidget):
         self._set_controls(running=False)
         if is_expected_engine_exit(exit_code, stop_requested):
             self._set_status("TO‘XTADI", "#94a3b8")
-            # Oldingi muvaffaqiyatsiz urinishdan qolgan "TEXNIK HOLAT"
-            # kartasi normal to'xtashdan keyin turib qolmasin.
-            if self.source_language.text() == "TEXNIK HOLAT":
-                self.source_language.setText("Suhbatdoshingiz gapiradi")
-                self.source_text.setText("Gap kutilmoqda…")
+            # To'xtaganda dialog default holatiga qaytadi.
+            self.source_language.setText("Suhbatdoshingiz gapiradi")
+            self.source_text.setText("Gap kutilmoqda…")
             return
         detail = self.last_engine_error or self.process_error or "Dvijok kutilmaganda yopildi."
         self._set_status(self._friendly_engine_error(detail), "#ef4444")
-        self.source_language.setText("TEXNIK HOLAT")
+        self.source_language.setText("Suhbatdoshingiz gapiradi")
         self.source_text.setText(detail[:180])
 
     @staticmethod
