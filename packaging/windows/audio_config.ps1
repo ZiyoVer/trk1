@@ -1,4 +1,4 @@
-# Live Translator — Windows default audio qurilmalarini boshqarish.
+﻿# Live Translator — Windows default audio qurilmalarini boshqarish.
 #
 # IPolicyConfig orqali default IJRO (render) va YOZIB OLISH (capture)
 # qurilmasini o'qish/o'rnatish. Ilovaning O'Z sessiyasida ishlaydi.
@@ -14,6 +14,11 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+
+# Chiqishni UTF-8 qilamiz: qurilma nomlari kirill/maxsus belgili bo'lsa
+# (masalan "Наушники (P2961)") ilova (Python UTF-8) to'g'ri o'qisin. Aks
+# holda lokal OEM kodlash bilan buzilib, dvigatel qurilmani topolmasdi.
+try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false } catch {}
 
 Add-Type -Language CSharp @"
 using System;

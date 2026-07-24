@@ -1,5 +1,5 @@
 #define MyAppName "Live Translator"
-#define MyAppVersion "0.9.39"
+#define MyAppVersion "0.9.40"
 #define MyAppPublisher "Live Translator"
 #define MyAppExeName "Live Translator.exe"
 

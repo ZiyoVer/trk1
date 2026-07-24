@@ -171,7 +171,7 @@ from system_audio import (
 
 
 APP_NAME = "Live Translator"
-APP_VERSION = "0.9.39"
+APP_VERSION = "0.9.40"
 KEYRING_SERVICE = "local.live-translator"
 KEYRING_ACCOUNT = "edcom-api-key"
 KEYRING_LICENSE_ACCOUNT = "license-key"
@@ -1722,9 +1722,12 @@ class TranslatorWindow(QWidget):
             if name:
                 args += ["-Name", name]
             creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+            # UTF-8 bilan o'qiymiz (text=True lokal cp1251 ishlatib, ps1 ning
+            # UTF-8 chiqishidagi kirill qurilma nomlarini — masalan "Наушники
+            # (P2961)" — buzardi -> dvigatel qurilmani topolmasdi).
             result = subprocess.run(
-                args, capture_output=True, text=True, timeout=30,
-                creationflags=creationflags,
+                args, capture_output=True, encoding="utf-8", errors="replace",
+                timeout=30, creationflags=creationflags,
             )
             out = (result.stdout or "").strip()
             err = (result.stderr or "").strip()
@@ -2186,22 +2189,24 @@ class TranslatorWindow(QWidget):
                         self._win_cable_match(routes.incoming_input.name),
                         self._win_cable_match(routes.outgoing_output.name),
                     )
-                    # Incoming tarjima (UZ) haqiqiy chiqishga NOM bilan boradi.
-                    # NAUSHNIK ulangan bo'lsa — naushnikka, aks holda fizik
-                    # karnayga. findoutput faqat ACTIVE (ulangan) qurilmalardan
-                    # naushnikni afzal ko'radi: bo'sh quloqchin uyasi ACTIVE
-                    # bo'lmagani uchun, naushnik topilsa = haqiqatan ulangan.
-                    chosen = ""
-                    try:
-                        chosen = self._win_audio("findoutput").strip()
-                    except Exception:
-                        chosen = ""
-                    if chosen and not is_virtual_device(chosen):
-                        incoming_output_arg = chosen
+                    # Incoming tarjima (UZ) foydalanuvchi AYNAN ESHITAYOTGAN
+                    # qurilmaga boradi = routing'dan oldingi tizim DEFAULT'i
+                    # (win_prev_render). Naushnik/monitor (masalan "P2961")
+                    # default bo'lsa — o'shanga; karnay default bo'lsa — karnayga.
+                    # findoutput faqat ZAXIRA: default virtual kabel bo'lib
+                    # qolган bo'lsa (oldingi sessiya tiklamagan) ACTIVE
+                    # naushnik/fizik qurilmani tanlaydi.
+                    prev = getattr(self, "win_prev_render", "")
+                    if prev and not is_virtual_device(prev):
+                        incoming_output_arg = prev
                     else:
-                        prev = getattr(self, "win_prev_render", "")
-                        if prev and not is_virtual_device(prev):
-                            incoming_output_arg = prev
+                        chosen = ""
+                        try:
+                            chosen = self._win_audio("findoutput").strip()
+                        except Exception:
+                            chosen = ""
+                        if chosen and not is_virtual_device(chosen):
+                            incoming_output_arg = chosen
                 # FEEDBACK-GATE O'CHIRILDI (v0.9.33). Sabab: suhbatdosh
                 # gapirganda incoming tarjima karnayda deyarli UZLUKSIZ ijro
                 # etiladi (kechikish + silliqlash tufayli), gate esa shu paytda
@@ -2216,10 +2221,11 @@ class TranslatorWindow(QWidget):
                     if not incoming_output_arg.isdigit()
                     else routes.incoming_output.name
                 )
-                if self._is_headphone_output(incoming_out_name):
-                    # Naushnik: mikrofon karnayni eshitmaydi -> feedback
-                    # yo'q -> gate KERAK EMAS -> to'liq ikki tomonlama
-                    # (bosmasdan, istalgan payt gapirish).
+                if not self._is_loud_speaker(incoming_out_name):
+                    # NAUSHNIK / monitor (P2961) / tashqi qurilma — ya'ni ICHKI
+                    # KARNAY EMAS: mikrofon chiqishni eshitmaydi -> feedback
+                    # yo'q -> gate KERAK EMAS -> to'liq ikki tomonlama (bosmasdan,
+                    # istalgan payt gapirish).
                     process_arguments.append("--no-gate")
                     self.route_hint.setVisible(False)
                 elif platform.system() == "Windows":
@@ -2749,6 +2755,28 @@ class TranslatorWindow(QWidget):
                 "airpods", "earbuds", " buds", "hands-free", "handsfree",
             )
         )
+
+    @staticmethod
+    def _is_loud_speaker(name: str) -> bool:
+        """Chiqish qurilmasi ICHKI/o'rnatilgan KARNAYMI — mikrofon yonidagi,
+        feedback (echo halqasi) manbai. FAQAT shu holatda push-to-talk (yoki
+        gate) kerak. Naushnik, monitor (masalan "P2961"), tashqi qurilma —
+        mikrofon eshitmaydi deb hisoblaymiz -> erkin ikki tomonlama.
+
+        Ichki karnay = "speaker/динамик" + o'rnatilgan audio chip (realtek va
+        h.k.). Monitor/tashqi qurilmalar chip nomini o'z ichiga olmaydi."""
+        n = (name or "").casefold()
+        if TranslatorWindow._is_headphone_output(name):
+            return False
+        is_speaker = "speaker" in n or "loudspeaker" in n or "динамик" in n
+        is_builtin = any(
+            w in n
+            for w in (
+                "realtek", "high definition", "conexant", "smart sound",
+                "built-in", "internal", "встро", "hd audio",
+            )
+        )
+        return is_speaker and is_builtin
 
     def _physical_output_name(self) -> str:
         """Nazorat ovozi uchun virtual bo'lmagan chiqish (tizim tanlovi afzal)."""

@@ -41,16 +41,22 @@ Zoom/Google Meet ovozini real vaqtda tarjima qiladigan **ikki yo'nalishli**
 
 ## 4. Feedback (echo/halqa) boshqaruvi — MUHIM
 Karnayda incoming tarjima yangraydi, fizik mikrofon uni eshitib qayta
-tarjima qilib yuborsa — cheksiz halqa. Yechim chiqish qurilmasiga qarab
-AVTOMATIK tanlanadi (`product_app.py`, `_launch_translator`):
+tarjima qilib yuborsa — cheksiz halqa. Incoming tarjima foydalanuvchi AYNAN
+ESHITAYOTGAN qurilmaga (routing'dan oldingi tizim default = `win_prev_render`,
+masalan "Наушники (P2961)") chiqadi. Rejim shu qurilmaga qarab AVTOMATIK:
 
-| Chiqish | Rejim | Bayon |
+| Chiqish qurilmasi | Rejim | Bayon |
 |--------|-------|-------|
-| **Naushnik** (aniqlansa) | `--no-gate` | Mikrofon doim ochiq, ERKIN ikki tomonlama. Mikrofon karnayni eshitmaydi → halqa yo'q. |
-| **Karnay (Windows)** | `--push-to-talk` | Mikrofon FAQAT **O'ng Ctrl** bosilganda ochiq (`GetAsyncKeyState`, VK 0xA3). Qo'yib yuborilgach **1.5s dum** (tarjima oxirigacha chiqsin). |
-| **Karnay (macOS)** | `CaptureGate` | Incoming yangraganda mikrofon avtomatik jim (navbatlashib). |
+| **Ichki karnay EMAS** (naushnik / monitor P2961 / tashqi) | `--no-gate` | Mikrofon doim ochiq, ERKIN ikki tomonlama. Mikrofon chiqishni eshitmaydi → halqa yo'q. |
+| **Ichki karnay (Windows)** | `--push-to-talk` | Mikrofon FAQAT **O'ng Ctrl** bosilganda ochiq (`GetAsyncKeyState`, VK 0xA3). Qo'yib yuborilgach **1.5s dum** (tarjima oxirigacha). |
+| **Ichki karnay (macOS)** | `CaptureGate` | Incoming yangraganda mikrofon avtomatik jim. |
 
-- Naushnikni `_is_headphone_output()` (nom) + `findoutput` (holat) aniqlaydi.
+- **Ichki karnay** = `_is_loud_speaker()`: "speaker/динамик" + o'rnatilgan chip
+  (realtek/high definition/...). Faqat SHU feedback manbai. Naushnik/monitor/
+  tashqi qurilma nomida chip bo'lmaydi → erkin.
+- Qurilma nomlari UTF-8 o'qiladi (`_win_audio` `encoding="utf-8"` + ps1 UTF-8
+  BOM + `[Console]::OutputEncoding=UTF8`) — kirill nomlar ("Наушники") buzilmaydi,
+  aks holda "naushnik" tanilmay tarjima karnayga ketardi (v0.9.40 fix).
 
 ## 5. Windows audio routing (`packaging/windows/audio_config.ps1`)
 - **IPolicyConfig** (COM) orqali tizim DEFAULT qurilmalarini o'zgartiradi —
