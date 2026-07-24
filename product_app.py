@@ -171,7 +171,7 @@ from system_audio import (
 
 
 APP_NAME = "Live Translator"
-APP_VERSION = "0.9.41"
+APP_VERSION = "0.9.42"
 KEYRING_SERVICE = "local.live-translator"
 KEYRING_ACCOUNT = "edcom-api-key"
 KEYRING_LICENSE_ACCOUNT = "license-key"
@@ -1414,8 +1414,15 @@ class TranslatorWindow(QWidget):
 
     @staticmethod
     def _select_device_kind(
-        combo: QComboBox, virtual: bool, preferred_words: tuple[str, ...] = ()
+        combo: QComboBox,
+        virtual: bool,
+        preferred_words: tuple[str, ...] = (),
+        avoid_words: tuple[str, ...] = (),
     ) -> bool:
+        """avoid_words: nomida shu so'z bor qurilma FAQAT boshqa nomzod
+        qolmagandagina tanlanadi (masalan Bluetooth hands-free mikrofoni —
+        u tanlansa naushnik telefon-sifat rejimiga tushib, ham yozish, ham
+        ijro buziladi)."""
         candidates: list[tuple[int, str]] = []
         for index in range(combo.count()):
             name = str(
@@ -1424,6 +1431,13 @@ class TranslatorWindow(QWidget):
             is_virtual = is_virtual_device(name)
             if is_virtual == virtual:
                 candidates.append((index, name))
+        if avoid_words:
+            avoided = [
+                c for c in candidates if any(w in c[1] for w in avoid_words)
+            ]
+            candidates = [
+                c for c in candidates if not any(w in c[1] for w in avoid_words)
+            ] + avoided
         for word in preferred_words:
             for index, name in candidates:
                 if word in name:
@@ -1497,7 +1511,14 @@ class TranslatorWindow(QWidget):
             self._select_device_kind(
                 self.input_device,
                 virtual=False,
-                preferred_words=("macbook air microphone", "microphone", "headset", "mic"),
+                # Kirill nomlar ham ("Микрофон (USB2.0 Camera)") — rus Windows'da
+                # webcam mikrofoni lotin so'zlarga mos kelmay, tasodifiy qurilma
+                # (ko'pincha BT hands-free) tanlanib gapirish o'lardi.
+                preferred_words=(
+                    "macbook air microphone", "microphone", "микрофон",
+                    "webcam", "web cam", "camera", "камер", "usb", "mic",
+                ),
+                avoid_words=("hands-free", "handsfree", "headset", "гарнитур"),
             )
             self._select_device_kind(
                 self.output_device,
@@ -1519,7 +1540,13 @@ class TranslatorWindow(QWidget):
             self._select_device_kind(
                 self.duplex_outgoing_input,
                 virtual=False,
-                preferred_words=("macbook air microphone", "microphone", "headset", "mic"),
+                # Yuqoridagi kabi: kirill/webcam nomlari + BT hands-free'dan
+                # qochish (aks holda naushnik HFP rejimga tushib ovoz buziladi).
+                preferred_words=(
+                    "macbook air microphone", "microphone", "микрофон",
+                    "webcam", "web cam", "camera", "камер", "usb", "mic",
+                ),
+                avoid_words=("hands-free", "handsfree", "headset", "гарнитур"),
             )
             incoming_virtual_id = self.input_device.currentData()
             self._select_distinct_virtual(
@@ -2237,7 +2264,7 @@ class TranslatorWindow(QWidget):
                     if os.environ.get("LT_SPEAKER_MODE", "").lower() == "ptt":
                         process_arguments.append("--push-to-talk")
                         self.route_hint.setText(
-                            "🎤 Karnay rejimi: gapirish uchun O‘NG CTRL "
+                            "🎤 Karnay rejimi: gapirish uchun CTRL (chap yoki o‘ng) "
                             "tugmasini bosib turing."
                         )
                     else:
@@ -2245,7 +2272,7 @@ class TranslatorWindow(QWidget):
                         self.route_hint.setText(
                             "🔊 Karnay: exo-bekor qilish (Windows AEC) yoqildi "
                             "— erkin gapiring, tugma bosish shart emas. Muammo "
-                            "bo‘lsa ilova o‘zi O‘ng Ctrl rejimiga qaytadi."
+                            "bo‘lsa ilova o‘zi Ctrl rejimiga qaytadi."
                         )
                     self.route_hint.setVisible(True)
                 else:

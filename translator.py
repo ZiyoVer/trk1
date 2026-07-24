@@ -229,9 +229,11 @@ class CaptureGate:
         return True
 
 
-# Push-to-talk uchun standart tugma: O'ng Ctrl (VK_RCONTROL). Discord kabi
-# — bosib turilganda gapiriladi, qo'yib yuborilganda mikrofon jim.
-PTT_DEFAULT_VK = 0xA3
+# Push-to-talk tugmasi: ISTALGAN Ctrl (VK_CONTROL — chap ham, o'ng ham).
+# Ilgari faqat O'ng Ctrl (0xA3) edi — foydalanuvchi odatiy chap Ctrl'ni
+# bosib "tarjima ishlamayapti" degan (mikrofon ochilmagan). Discord kabi:
+# bosib turilganda gapiriladi, qo'yib yuborilganda mikrofon jim.
+PTT_DEFAULT_VK = 0x11
 
 
 def make_ptt_key_check(vk_code: int = PTT_DEFAULT_VK):
@@ -768,7 +770,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--push-to-talk",
         action="store_true",
-        help="Ikkalasi (karnay): gapirish mikrofoni FAQAT O'ng Ctrl bosib "
+        help="Ikkalasi (karnay): gapirish mikrofoni FAQAT Ctrl (chap yoki o'ng) bosib "
         "turilganda ochiq. Feedback halqasi yo'q + istalgan payt gapirish. "
         "--no-gate va CaptureGate o'rniga ishlatiladi.",
     )
@@ -970,7 +972,7 @@ async def async_main(args: argparse.Namespace) -> int:
                     "[AEC] Microsoft exo-bekor qilish yoqildi — erkin gapiring."
                 )
             elif getattr(args, "push_to_talk", False):
-                # Karnay + push-to-talk: mikrofon faqat O'ng Ctrl bosilganda
+                # Karnay + push-to-talk: mikrofon faqat Ctrl bosilganda
                 # ochiq. Feedback halqasi yo'q, istalgan payt gapirish.
                 outgoing_translator.capture_gate = PushToTalkGate(
                     make_ptt_key_check()

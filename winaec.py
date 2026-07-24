@@ -8,7 +8,7 @@ mikrofon signalini qaytaradi. Drayver yozish/imzolash KERAK EMAS.
 Nega alohida JARAYON: DMO streaming yo'li audio sessiyasiz muhitda (masalan
 SSH Session 0) AccessViolation berishi mumkin — Python uni ushlay olmaydi
 (jarayon o'ladi). Worker alohida jarayonda ishlaydi: o'lsa dvigatel OMON
-qoladi va avtomatik push-to-talk (O'ng Ctrl) rejimiga qaytadi.
+qoladi va avtomatik push-to-talk (Ctrl) rejimiga qaytadi.
 
 Oqim:
   engine (translator.py)                 worker (shu exe --winaec-worker)
@@ -555,7 +555,7 @@ class WinAECCapture:
             return
         self._fb_done = True
         self.log(
-            f"[AEC] ishlamadi ({reason}) — xavfsiz rejim: O'ng Ctrl bosib gapiring."
+            f"[AEC] ishlamadi ({reason}) — xavfsiz rejim: Ctrl bosib gapiring."
         )
         self._kill_proc()
         try:
