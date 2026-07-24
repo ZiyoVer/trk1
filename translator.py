@@ -334,7 +334,11 @@ class Translator:
                 playback_profile=args.playback_profile,
             )
             self.monitor_device = monitor_device
-        self.capture = AudioCapture(self.input_device, self._from_audio_thread)
+        # Capture fabrikasi: duplex+winaec rejimida tashqaridan WinAECCapture
+        # bilan almashtiriladi; _reopen_audio ham AYNAN shu tip bilan qayta
+        # ochadi (aks holda qurilma almashganda AEC jimgina yo'qolardi).
+        self.capture_factory = lambda device, deliver: AudioCapture(device, deliver)
+        self.capture = self.capture_factory(self.input_device, self._from_audio_thread)
         self.started_at = 0.0
         self.input_bytes = 0
         self.output_bytes = 0
@@ -629,7 +633,7 @@ class Translator:
             output_rate=self.args.output_sample_rate,
             playback_profile=self.args.playback_profile,
         )
-        self.capture = AudioCapture(self.input_device, self._from_audio_thread)
+        self.capture = self.capture_factory(self.input_device, self._from_audio_thread)
         self.player.start()
         self.capture.start()
 
@@ -768,6 +772,16 @@ def build_parser() -> argparse.ArgumentParser:
         "turilganda ochiq. Feedback halqasi yo'q + istalgan payt gapirish. "
         "--no-gate va CaptureGate o'rniga ishlatiladi.",
     )
+    parser.add_argument(
+        "--winaec",
+        action="store_true",
+        help="Ikkalasi (Windows, karnay): Microsoft AEC (Voice Capture DSP) "
+        "bilan exo o'chiriladi — Ctrl'siz erkin gapirish. Ishlamasa avtomatik "
+        "push-to-talk rejimiga qaytadi.",
+    )
+    parser.add_argument("--winaec-worker", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--winaec-mic", default="", help=argparse.SUPPRESS)
+    parser.add_argument("--winaec-speaker", default="", help=argparse.SUPPRESS)
     parser.add_argument(
         "--speech-speed",
         type=float,
@@ -927,7 +941,35 @@ async def async_main(args: argparse.Namespace) -> int:
             # mikrofoni gate bilan yopiladi — aks holda o'z tarjimamiz qayta
             # tarjima bo'lib meetingga ketardi.
             incoming_translator, outgoing_translator = translators
-            if getattr(args, "push_to_talk", False):
+            if getattr(args, "winaec", False) and platform.system() == "Windows":
+                # Microsoft AEC: exo DMO ichida o'chiriladi — mikrofon DOIM
+                # ochiq (gate ham, Ctrl ham kerak emas). Worker ishlamasa
+                # WinAECCapture o'zi PTT'ga qaytaradi (pastdagi callback).
+                from winaec import WinAECCapture
+
+                out_tr = outgoing_translator
+                speaker_name = resolved_devices[0][1].name  # incoming chiqishi
+
+                def _aec_fallback() -> None:
+                    out_tr.capture_gate = PushToTalkGate(make_ptt_key_check())
+
+                with suppress(Exception):
+                    out_tr.capture.stream.close()  # ishlatilmagan xom capture
+
+                def _winaec_factory(device, deliver):  # noqa: ANN001
+                    return WinAECCapture(
+                        device, speaker_name, deliver, _aec_fallback,
+                        log=out_tr._log,
+                    )
+
+                out_tr.capture_factory = _winaec_factory
+                out_tr.capture = _winaec_factory(
+                    out_tr.input_device, out_tr._from_audio_thread
+                )
+                out_tr._log(
+                    "[AEC] Microsoft exo-bekor qilish yoqildi — erkin gapiring."
+                )
+            elif getattr(args, "push_to_talk", False):
                 # Karnay + push-to-talk: mikrofon faqat O'ng Ctrl bosilganda
                 # ochiq. Feedback halqasi yo'q, istalgan payt gapirish.
                 outgoing_translator.capture_gate = PushToTalkGate(
@@ -969,6 +1011,12 @@ def main() -> int:
 
     ensure_ca_bundle_env()
     args = build_parser().parse_args()
+    if getattr(args, "winaec_worker", False):
+        # Microsoft AEC ishchi jarayoni: stdout = xom PCM. Gemini/audio
+        # zanjiri ishga tushirilmaydi — faqat DMO capture halqasi.
+        from winaec import run_worker
+
+        return run_worker(args.winaec_mic or "", args.winaec_speaker or "")
     try:
         return asyncio.run(async_main(args))
     except KeyboardInterrupt:

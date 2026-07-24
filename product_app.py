@@ -171,7 +171,7 @@ from system_audio import (
 
 
 APP_NAME = "Live Translator"
-APP_VERSION = "0.9.40"
+APP_VERSION = "0.9.41"
 KEYRING_SERVICE = "local.live-translator"
 KEYRING_ACCOUNT = "edcom-api-key"
 KEYRING_LICENSE_ACCOUNT = "license-key"
@@ -2229,18 +2229,24 @@ class TranslatorWindow(QWidget):
                     process_arguments.append("--no-gate")
                     self.route_hint.setVisible(False)
                 elif platform.system() == "Windows":
-                    # Karnay (Windows): PUSH-TO-TALK. Mikrofon faqat O'ng Ctrl
-                    # bosib turilganda ochiq -> karnaydagi tarjima hech qachon
-                    # qayta ushlanmaydi (feedback halqasi yo'q) va suhbatdosh
-                    # gapirayotgan bo'lsa ham istalgan payt gapira olasiz.
-                    # CaptureGate (avtomatik jim) karnayda incoming uzluksiz
-                    # yangragani uchun mikrofonni abadiy yopib qo'yardi.
-                    process_arguments.append("--push-to-talk")
-                    self.route_hint.setText(
-                        "🎤 Karnay rejimi: gapirish uchun O‘NG CTRL tugmasini "
-                        "bosib turing (qo‘yib yuborsangiz mikrofon jim — echo "
-                        "yo‘q). Naushnik ulasangiz bosmasdan erkin gapirasiz."
-                    )
+                    # Karnay (Windows): Microsoft AEC (Voice Capture DSP) —
+                    # exo tizim darajasida o'chiriladi, mikrofon DOIM ochiq,
+                    # Ctrl bosish KERAK EMAS. AEC ishga tushmasa dvigatel
+                    # O'ZI push-to-talk'ka qaytadi (log: "[AEC] ishlamadi").
+                    # LT_SPEAKER_MODE=ptt bilan eski rejimga majburlash mumkin.
+                    if os.environ.get("LT_SPEAKER_MODE", "").lower() == "ptt":
+                        process_arguments.append("--push-to-talk")
+                        self.route_hint.setText(
+                            "🎤 Karnay rejimi: gapirish uchun O‘NG CTRL "
+                            "tugmasini bosib turing."
+                        )
+                    else:
+                        process_arguments.append("--winaec")
+                        self.route_hint.setText(
+                            "🔊 Karnay: exo-bekor qilish (Windows AEC) yoqildi "
+                            "— erkin gapiring, tugma bosish shart emas. Muammo "
+                            "bo‘lsa ilova o‘zi O‘ng Ctrl rejimiga qaytadi."
+                        )
                     self.route_hint.setVisible(True)
                 else:
                     # macOS karnay: feedback-gate (navbatlashib gapirish).
