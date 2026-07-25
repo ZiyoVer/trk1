@@ -108,6 +108,7 @@ def validate_duplex_routes(routes: DuplexRoutes) -> None:
         == virtual_device_family(routes.outgoing_output.name)
     ):
         raise ValueError(
-            "IKKALASI rejimiga ikkita alohida virtual audio qurilma kerak: "
-            "BlackHole 2ch va BlackHole 16ch."
+            "IKKALASI rejimi uchun ikkita alohida virtual audio kabel kerak "
+            "(Windows: VB-CABLE + Hi-Fi Cable; macOS: BlackHole 2ch + 16ch). "
+            "«Audio Driver» tugmasi bilan o‘rnating va kompyuterni qayta yoqing."
         )

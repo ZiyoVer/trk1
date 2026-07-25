@@ -171,7 +171,7 @@ from system_audio import (
 
 
 APP_NAME = "Live Translator"
-APP_VERSION = "0.9.42"
+APP_VERSION = "0.9.43"
 KEYRING_SERVICE = "local.live-translator"
 KEYRING_ACCOUNT = "edcom-api-key"
 KEYRING_LICENSE_ACCOUNT = "license-key"
@@ -1401,7 +1401,13 @@ class TranslatorWindow(QWidget):
     def _endpoint_from_combo(combo: QComboBox) -> AudioEndpoint:
         device_index = combo.currentData()
         if device_index is None:
-            raise ValueError("Kerakli audio qurilma topilmadi.")
+            # Eng ko'p uchraydigan sabab: ikkinchi virtual kabel o'rnatilmagan
+            # (drayver o'rnatishda UAC rad etilgan yoki qayta yoqilmagan).
+            raise ValueError(
+                "Kerakli audio qurilma topilmadi. Virtual audio kabellar "
+                "o‘rnatilganini tekshiring («Audio Driver» tugmasi) va "
+                "kompyuterni qayta yoqing."
+            )
         return AudioEndpoint(int(device_index), TranslatorWindow._device_name(combo))
 
     def _duplex_routes(self) -> DuplexRoutes:
@@ -2248,11 +2254,10 @@ class TranslatorWindow(QWidget):
                     if not incoming_output_arg.isdigit()
                     else routes.incoming_output.name
                 )
-                if not self._is_loud_speaker(incoming_out_name):
-                    # NAUSHNIK / monitor (P2961) / tashqi qurilma — ya'ni ICHKI
-                    # KARNAY EMAS: mikrofon chiqishni eshitmaydi -> feedback
-                    # yo'q -> gate KERAK EMAS -> to'liq ikki tomonlama (bosmasdan,
-                    # istalgan payt gapirish).
+                if self._output_is_ear_safe(incoming_out_name):
+                    # NAUSHNIK/garnitura: tarjima quloqqa chiqadi, mikrofon uni
+                    # eshitmaydi -> feedback yo'q -> himoya KERAK EMAS -> to'liq
+                    # ikki tomonlama (tugma bosmasdan, istalgan payt gapirish).
                     process_arguments.append("--no-gate")
                     self.route_hint.setVisible(False)
                 elif platform.system() == "Windows":
@@ -2280,6 +2285,16 @@ class TranslatorWindow(QWidget):
                     self.route_hint.setText(
                         "🎧 To‘liq ikki tomonlama uchun naushnik ulang. Karnay "
                         "bilan: suhbatdosh gapirmayotganda gapiring."
+                    )
+                    self.route_hint.setVisible(True)
+                if self._is_handsfree_mic(routes.outgoing_input.name):
+                    # Boshqa mikrofon topilmagan: BT garnitura HFP rejimiga
+                    # o'tib ovoz sifati keskin pasayadi (va stereo chiqish
+                    # uzilishi mumkin) — foydalanuvchi sababini bilsin.
+                    self.route_hint.setText(
+                        "⚠️ Mikrofon sifatida Bluetooth garnitura tanlandi — "
+                        "ovoz sifati pasayadi. Iloji bo‘lsa webcam yoki USB "
+                        "mikrofon ulab, dasturni qayta ishga tushiring."
                     )
                     self.route_hint.setVisible(True)
                 process_arguments.extend(
@@ -2790,26 +2805,48 @@ class TranslatorWindow(QWidget):
         )
 
     @staticmethod
-    def _is_loud_speaker(name: str) -> bool:
-        """Chiqish qurilmasi ICHKI/o'rnatilgan KARNAYMI — mikrofon yonidagi,
-        feedback (echo halqasi) manbai. FAQAT shu holatda push-to-talk (yoki
-        gate) kerak. Naushnik, monitor (masalan "P2961"), tashqi qurilma —
-        mikrofon eshitmaydi deb hisoblaymiz -> erkin ikki tomonlama.
+    def _is_handsfree_mic(name: str) -> bool:
+        """Bluetooth garnituraning «hands-free» mikrofonimi?
 
-        Ichki karnay = "speaker/динамик" + o'rnatilgan audio chip (realtek va
-        h.k.). Monitor/tashqi qurilmalar chip nomini o'z ichiga olmaydi."""
+        Windows bunday mikrofonni ochganda BT qurilma HFP (telefon) rejimiga
+        o'tadi: stereo chiqish uzilib, ovoz telefon sifatiga tushadi. Boshqa
+        mikrofon bo'lsa uni tanlaymiz (_select_device_kind avoid_words), lekin
+        boshqa iloj bo'lmasa foydalanuvchini ogohlantiramiz."""
         n = (name or "").casefold()
-        if TranslatorWindow._is_headphone_output(name):
-            return False
-        is_speaker = "speaker" in n or "loudspeaker" in n or "динамик" in n
-        is_builtin = any(
-            w in n
-            for w in (
-                "realtek", "high definition", "conexant", "smart sound",
-                "built-in", "internal", "встро", "hd audio",
-            )
+        return any(
+            marker in n
+            for marker in ("hands-free", "handsfree", "hands free", "bluetooth")
         )
-        return is_speaker and is_builtin
+
+    def _output_is_ear_safe(self, name: str) -> bool:
+        """Tarjima QULOQQA chiqadimi (naushnik/garnitura) — echo xavfi yo'qmi?
+
+        True bo'lsa gapirish mikrofoni erkin ochiq qoladi; False bo'lsa
+        himoya kerak (Windows: AEC, zaxira push-to-talk; macOS: gate).
+
+        Windows'ning O'Z ma'lumotiga (endpoint FormFactor) tayanamiz: u
+        qurilma naushnikmi, karnaymi yoki HDMI-monitormi ekanini aniq
+        aytadi. Ilgari faqat NOM bo'yicha taxmin qilinardi va "Динамики
+        (P2961)" (monitor karnayi), "Speakers (USB Audio)", HDMI/TV kabi
+        HAQIQIY karnaylar "naushnik" deb hisoblanib, himoyasiz qolar edi —
+        mikrofon karnaydagi tarjimani qayta ushlab CHEKSIZ HALQA hosil
+        qilardi. Nom bo'yicha moslik esa QO'SHIMCHA belgi bo'lib qoladi:
+        FormFactor o'qilmasa yoki "naushnik" desa — quloqqa deb sanaymiz."""
+        if self._is_headphone_output(name):
+            return True
+        if platform.system() == "Windows":
+            try:
+                from winaec import output_is_ear_safe
+
+                verdict = output_is_ear_safe(name)
+                print(f"[ROUTING] formfactor {name!r} -> ear_safe={verdict}", flush=True)
+                if verdict is not None:
+                    return verdict
+            except Exception as error:
+                print(f"[ROUTING] formfactor xato: {error}", flush=True)
+        # Aniqlab bo'lmadi — XAVFSIZ tomonni tanlaymiz: karnay deb hisoblab
+        # himoyani yoqamiz (echo halqasi eng yomon nosozlik edi).
+        return False
 
     def _physical_output_name(self) -> str:
         """Nazorat ovozi uchun virtual bo'lmagan chiqish (tizim tanlovi afzal)."""

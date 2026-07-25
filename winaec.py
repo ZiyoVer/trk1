@@ -57,6 +57,26 @@ PID_AES = 10             # qo'shimcha exo bosish (0/1/2)
 PKEY_FRIENDLY_NAME_FMTID = "A45C254E-DF1C-4EFD-8020-67D146A850E0"
 PKEY_FRIENDLY_NAME_PID = 14
 
+# PKEY_AudioEndpoint_FormFactor — Windows'ning O'ZI bergan qurilma TURI.
+# Nomga qarab taxmin qilishdan ancha ishonchli: "Динамики (P2961)" (monitor
+# karnayi) nomida "realtek" yo'q, lekin FormFactor=Speakers deb aniq aytadi.
+PKEY_FORM_FACTOR_FMTID = "1DA5D803-D492-4EDD-8C23-E0C0FFEE7F0E"
+PKEY_FORM_FACTOR_PID = 0
+
+FF_REMOTE_NETWORK = 0
+FF_SPEAKERS = 1
+FF_LINE_LEVEL = 2
+FF_HEADPHONES = 3
+FF_MICROPHONE = 4
+FF_HEADSET = 5
+FF_HANDSET = 6
+FF_DIGITAL_PASSTHROUGH = 7
+FF_SPDIF = 8
+FF_DIGITAL_DISPLAY = 9   # HDMI/DisplayPort — monitor/TV karnayi
+FF_UNKNOWN = 10
+# Ovoz QULOQQA chiqadigan (mikrofon eshitmaydigan) turlar — echo xavfi yo'q.
+FF_EAR_SAFE = (FF_HEADPHONES, FF_HEADSET)
+
 
 class GUID(ctypes.Structure):
     _fields_ = [("b", ctypes.c_ubyte * 16)]
@@ -159,13 +179,14 @@ def _norm(name: str) -> str:
     return " ".join((name or "").casefold().split())
 
 
-def active_device_names(flow: int) -> list[str]:
-    """MMDevice ACTIVE endpoint nomlari — DMO DEVICE_INDEXES ko'radigan
-    TARTIBDA (EnumAudioEndpoints). flow: 0=render(karnay), 1=capture(mikrofon)."""
+def active_endpoints(flow: int) -> list[tuple[str, int]]:
+    """ACTIVE endpointlar (nom, FormFactor) — DMO DEVICE_INDEXES ko'radigan
+    TARTIBDA (EnumAudioEndpoints). flow: 0=render(karnay), 1=capture(mikrofon).
+    FormFactor o'qilmasa -1."""
     ole32 = ctypes.windll.ole32
     ole32.CoInitializeEx(None, 0)  # MTA; allaqachon boshqa rejim bo'lsa ham davom
     enum = _co_create(CLSID_MMDeviceEnumerator, IID_IMMDeviceEnumerator)
-    names: list[str] = []
+    items: list[tuple[str, int]] = []
     try:
         col = ctypes.c_void_p(0)
         hr = _call(
@@ -178,7 +199,12 @@ def active_device_names(flow: int) -> list[str]:
         try:
             count = ctypes.c_uint32(0)
             _call(col.value, 3, (ctypes.POINTER(ctypes.c_uint32),), ctypes.byref(count))
-            key = PROPERTYKEY(GUID.of(PKEY_FRIENDLY_NAME_FMTID), PKEY_FRIENDLY_NAME_PID)
+            name_key = PROPERTYKEY(
+                GUID.of(PKEY_FRIENDLY_NAME_FMTID), PKEY_FRIENDLY_NAME_PID
+            )
+            ff_key = PROPERTYKEY(
+                GUID.of(PKEY_FORM_FACTOR_FMTID), PKEY_FORM_FACTOR_PID
+            )
             for i in range(count.value):
                 dev = ctypes.c_void_p(0)
                 if _call(
@@ -186,7 +212,7 @@ def active_device_names(flow: int) -> list[str]:
                     (ctypes.c_uint32, ctypes.POINTER(ctypes.c_void_p)),
                     i, ctypes.byref(dev),
                 ) != S_OK or not dev.value:
-                    names.append("")
+                    items.append(("", -1))
                     continue
                 try:
                     store = ctypes.c_void_p(0)
@@ -195,25 +221,35 @@ def active_device_names(flow: int) -> list[str]:
                         (ctypes.c_int, ctypes.POINTER(ctypes.c_void_p)),
                         0, ctypes.byref(store),
                     ) != S_OK or not store.value:
-                        names.append("")
+                        items.append(("", -1))
                         continue
                     try:
+                        name = ""
                         pv = PROPVARIANT()
-                        _call(
+                        if _call(
                             store.value, 5,
                             (ctypes.POINTER(PROPERTYKEY), ctypes.POINTER(PROPVARIANT)),
-                            ctypes.byref(key), ctypes.byref(pv),
-                        )
-                        if pv.vt == 31 and pv.data:  # VT_LPWSTR
-                            names.append(
+                            ctypes.byref(name_key), ctypes.byref(pv),
+                        ) == S_OK and pv.vt == 31 and pv.data:  # VT_LPWSTR
+                            name = (
                                 ctypes.cast(
                                     ctypes.c_void_p(pv.data), ctypes.c_wchar_p
                                 ).value
                                 or ""
                             )
-                        else:
-                            names.append("")
                         ctypes.windll.ole32.PropVariantClear(ctypes.byref(pv))
+
+                        form_factor = -1
+                        pv2 = PROPVARIANT()
+                        if _call(
+                            store.value, 5,
+                            (ctypes.POINTER(PROPERTYKEY), ctypes.POINTER(PROPVARIANT)),
+                            ctypes.byref(ff_key), ctypes.byref(pv2),
+                        ) == S_OK and pv2.vt in (2, 3, 18, 19):  # I2/I4/UI2/UI4
+                            form_factor = int(pv2.data & 0xFFFF)
+                        ctypes.windll.ole32.PropVariantClear(ctypes.byref(pv2))
+
+                        items.append((name, form_factor))
                     finally:
                         _release(store.value)
                 finally:
@@ -222,7 +258,38 @@ def active_device_names(flow: int) -> list[str]:
             _release(col.value)
     finally:
         _release(enum)
-    return names
+    return items
+
+
+def active_device_names(flow: int) -> list[str]:
+    """ACTIVE endpoint NOMLARI (DMO indeks tartibida)."""
+    return [name for name, _ff in active_endpoints(flow)]
+
+
+def endpoint_form_factor(name: str, flow: int = 0) -> int:
+    """Nomiga mos ACTIVE endpoint turi (FF_* konstantalari), topilmasa -1.
+
+    Nomga qarab taxmin qilishdan ishonchli: Windows'ning o'zi qurilma
+    naushnikmi/karnaymi/HDMI-monitormi ekanini aytadi."""
+    try:
+        endpoints = active_endpoints(flow)
+    except Exception:
+        return -1
+    index = match_device_index(name, [n for n, _ff in endpoints])
+    if index < 0:
+        return -1
+    return endpoints[index][1]
+
+
+def output_is_ear_safe(name: str) -> bool | None:
+    """Chiqish QULOQQA boradimi (naushnik/garnitura — mikrofon eshitmaydi)?
+
+    True = naushnik/garnitura, False = karnay/HDMI/boshqa (echo xavfi bor),
+    None = aniqlab bo'lmadi (chaqiruvchi nom bo'yicha taxminga tushadi)."""
+    kind = endpoint_form_factor(name, 0)
+    if kind < 0 or kind == FF_UNKNOWN:
+        return None
+    return kind in FF_EAR_SAFE
 
 
 def match_device_index(target: str, names: list[str]) -> int:
@@ -455,7 +522,11 @@ class WinAECCapture:
     + himoyasiz halqa" holatida qolmaydi.
     """
 
-    FIRST_DATA_TIMEOUT = 6.0
+    # Birinchi audio shu vaqt ichida kelmasa — AEC ishlamadi deb hisoblaymiz.
+    # Bu oyna davomida gapirish mikrofoni JIM (worker hali audio bermagan),
+    # shuning uchun uzun bo'lmasligi kerak: 4s yetarli, aks holda
+    # foydalanuvchining birinchi gapi yo'qoladi.
+    FIRST_DATA_TIMEOUT = 4.0
 
     def __init__(self, mic_device, speaker_name, deliver, on_fallback, log=print):  # noqa: ANN001
         self.mic_device = mic_device
@@ -496,6 +567,10 @@ class WinAECCapture:
         )
 
     def start(self) -> None:
+        self.log(
+            "[AEC] ishga tushmoqda: exo-bekor qilish (mikrofon "
+            f"{self.mic_device.name!r}, karnay {self.speaker_name!r})…"
+        )
         try:
             self.proc = self._spawn()
         except Exception as error:
@@ -517,7 +592,14 @@ class WinAECCapture:
                 chunk = proc.stdout.read(1280)
                 if not chunk:
                     break
-                self._got_data = True
+                if not self._got_data:
+                    self._got_data = True
+                    # Logdan AEC haqiqatan ishlaganini bilish uchun (masofadan
+                    # diagnostika qilib bo'lmaydigan kompyuterlarda muhim).
+                    self.log(
+                        "[AEC] ISHLADI — exo-bekor qilish faol, tugma bosmasdan "
+                        "erkin gapiring."
+                    )
                 self.deliver(chunk)
         except Exception:
             pass
