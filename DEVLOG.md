@@ -37,6 +37,7 @@ versiyasi. Yangi suhbat/odam shu faylni o'qib butun kontekstni tiklaydi.
 | **0.9.40** | **BARQAROR.** Kirill nom kodlash tuzatildi → naushnik ("Наушники (P2961)") to'g'ri tanlanadi: tarjima naushnikka, erkin gapirish; karnayda PTT. Saqlash nuqtasi: branch `stable-0.9.40`, tag `v0.9.40`. Saytda "Naushnikli eski versiya" havolasi | ✅ tasdiqlangan |
 | 0.9.41 | **Microsoft AEC** (Voice Capture DSP, `winaec.py`): karnayda Ctrl'siz erkin gapirish; ishlamasa avto-PTT fallback | ⏳ foydalanuvchi testi kutilmoqda |
 | 0.9.42 | Webcam/kirill mikrofon avto-tanlash (boshqa kompyuterlar) + Ctrl endi chap ham o'ng ham | ⏳ boshliq kompida test kutilmoqda |
+| 0.9.43 | **Echo himoyasi teshigi tuzatildi** (statik audit): qurilma turi Windows FormFactor bo'yicha; AEC log diagnostikasi; BT garnitura ogohlantirishi; tushunarli xato xabarlari | ⏳ test kutilmoqda |
 
 ## Muammo → ildiz sabab → yechim (xronologik)
 
@@ -93,6 +94,18 @@ versiyasi. Yangi suhbat/odam shu faylni o'qib butun kontekstni tiklaydi.
    SOURCE_MODE=TRUE, SYSTEM_MODE=0, DEVICE_INDEXES=(spk<<16)|mic,
    ECHO_LENGTH=512, AES=1). Worker o'lsa/6s audio bermasa → avto-PTT.
    `LT_SPEAKER_MODE=ptt` env → majburan eski rejim.
+
+9. **Echo himoyasi FAQAT bitta kompyuterda ishlardi (statik audit, 0.9.43).**
+   `_is_loud_speaker()` nomda ham "speaker/динамик", ham chip so'zi
+   ("realtek"/"hd audio"…) bo'lishini talab qilardi. Shu sabab monitor karnayi
+   ("Динамики (P2961)"), USB karnay, HDMI/TV, Realtek bo'lmagan noutbuklar
+   "naushnik" deb hisoblanib `--no-gate` bilan HIMOYASIZ ishlardi → cheksiz
+   echo halqasi qaytardi. Faqat TRK mashinasining "Speaker (Realtek(R) Audio)"
+   nomi to'g'ri edi. Yechim: Windows endpoint **FormFactor**
+   (`PKEY_AudioEndpoint_FormFactor`, winaec.py `output_is_ear_safe`) —
+   Headphones(3)/Headset(5) → erkin; Speakers(1)/HDMI(9)/noaniq → himoya.
+   Nom bo'yicha naushnik topilsa ham erkin (tasdiqlangan "Наушники (P2961)"
+   holati o'zgarmaydi). **Qoida: noaniqlikda XAVFSIZ tomonni tanla.**
 
 ## Muhim texnik saboqlar (takrorlamaslik uchun)
 
