@@ -11,6 +11,7 @@ import signal
 import sys
 import tempfile
 import time
+from collections import deque
 from contextlib import suppress
 
 from dotenv import load_dotenv
@@ -151,6 +152,21 @@ class SilenceGate:
     so'z dumini kesmaslik uchun.
     """
 
+    # Xona shovqiniga MOSLASHUVCHI chegara. Qat'iy RMS chegarasi yetarli
+    # emas: jim xonada 300 to'g'ri, lekin shovqinli ofisda fon shovqinining
+    # o'zi 400-800 bo'ladi -> modelga "past ovozli nutq" bo'lib boradi va u
+    # gap TO'QIB chiqaradi ("hech narsa gapirmasam ham takrorlab qolyapti").
+    # Yechim: jim paytdagi darajani (shovqin poli) kuzatib boramiz va nutq
+    # deb faqat undan SEZILARLI baland bo'lakni hisoblaymiz.
+    NOISE_FACTOR = 2.5     # nutq shovqin polidan shuncha baland bo'lishi kerak
+    FLOOR_MAX = 800.0      # juda shovqinli xonada ham chegara cheksiz o'smasin
+    FLOOR_WINDOW_BLOCKS = 200  # ~8 s (40 ms bo'laklar): odam nafas oladi,
+    # gaplar orasida albatta pauza bo'ladi — o'sha pauza xonaning HAQIQIY
+    # shovqin darajasini ko'rsatadi. Shuning uchun pol = oynadagi ENG JIM
+    # bo'lak. (Faqat "jim deb topilgan" bo'laklardan hisoblab bo'lmaydi:
+    # shovqin chegaradan baland bo'lsa u "nutq" deb sanalib, pol
+    # yangilanmay qotib qolardi.)
+
     def __init__(self, threshold_rms: int, hangover_ms: int = 600,
                  clock=time.monotonic):  # noqa: ANN001
         self.threshold = max(1, threshold_rms)
@@ -158,6 +174,7 @@ class SilenceGate:
         self._clock = clock
         self._last_voice = 0.0
         self._warmup_until = 0.0
+        self._recent: deque[float] = deque(maxlen=self.FLOOR_WINDOW_BLOCKS)
 
     @staticmethod
     def _rms(pcm16: bytes) -> float:
@@ -175,7 +192,11 @@ class SilenceGate:
             self._warmup_until = now + 0.4
             self._last_voice = now
         rms = self._rms(pcm16)
-        if rms >= self.threshold or now < self._warmup_until:
+        self._recent.append(rms)
+        floor = min(min(self._recent), self.FLOOR_MAX)
+        required = max(float(self.threshold), floor * self.NOISE_FACTOR)
+        is_speech = rms >= required or now < self._warmup_until
+        if is_speech:
             self._last_voice = now
             return pcm16
         if now - self._last_voice < self.hangover_s:
