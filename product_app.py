@@ -173,7 +173,7 @@ from system_audio import (
 
 
 APP_NAME = "Live Translator"
-APP_VERSION = "0.9.58"
+APP_VERSION = "0.9.59"
 
 # Yordam serveri (Railway): loglarni yuborish va yangilanishni tekshirish.
 # Yuklash tokeni ilova ichida bo'lishi SHART (foydalanuvchi bilmaydi) —
@@ -1567,25 +1567,59 @@ class TranslatorWindow(QWidget):
         combo.setCurrentIndex(-1)
         return False
 
+    def _restore_saved_cable(self, combo: QComboBox, key: str) -> bool:
+        """Oldingi sessiyada ishlatilgan kabelni qaytaradi (agar hali mavjud).
+
+        NEGA KERAK: kompyuterda ikkita Hi-Fi kabel bo'lishi mumkin
+        ("Hi-Fi Cable" va "2- Hi-Fi Cable"). Avtomatik tanlov qurilmalar
+        ro'yxati tartibiga bog'liq — monitor/webcam ulanganda tartib
+        o'zgarib, ilova BOSHQA kabelni tanlab qolardi. Meet esa eskisiga
+        qadab qo'yilgan bo'lsa, ovoz o'tmay qolardi (jonli nosozlik:
+        "til o'zgartirgandim, endi ikkala tomon ham eshitilmayapti").
+        Shuning uchun tanlov ESLAB QOLINADI va imkon qadar o'zgarmaydi."""
+        saved = str(self.settings.value(key, "") or "")
+        if not saved:
+            return False
+        for index in range(combo.count()):
+            name = str(combo.itemData(index, Qt.ItemDataRole.UserRole + 1) or "")
+            if name == saved:
+                combo.setCurrentIndex(index)
+                return True
+        return False
+
+    def _remember_cables(self) -> None:
+        """Tanlangan kabellarni keyingi ochilish uchun saqlaydi."""
+        with suppress(Exception):
+            self.settings.setValue(
+                "cables/incoming_input", self._device_name(self.input_device)
+            )
+            self.settings.setValue(
+                "cables/outgoing_output",
+                self._device_name(self.duplex_outgoing_output),
+            )
+
     def _apply_direction_devices(self, mode: str) -> None:
         if not hasattr(self, "input_device") or self.process is not None:
             return
         if mode in {"incoming", "duplex"}:
-            self._select_device_kind(
-                self.input_device,
-                virtual=True,
+            if not self._restore_saved_cable(
+                self.input_device, "cables/incoming_input"
+            ):
                 # Hi-Fi Cable'ni BIRINCHI afzal ko'ramiz: real mashinada
                 # meeting audiosi Hi-Fi kabelga ("Hi-Fi Cable Output (2-…)")
                 # ketadi, shunda Start'da tizim chiqishi "Динамики (2- VB-Audio
                 # Hi-Fi Cable)"ga o'rnatiladi va ilova audioni ushlaydi. Hi-Fi
                 # bo'lmasa oddiy "cable output"ga tushamiz (zaxira).
-                preferred_words=(
-                    "blackhole 2ch",
-                    "hi-fi cable output",
-                    "vb-audio hi-fi",
-                    "cable output",
-                ),
-            )
+                self._select_device_kind(
+                    self.input_device,
+                    virtual=True,
+                    preferred_words=(
+                        "blackhole 2ch",
+                        "hi-fi cable output",
+                        "vb-audio hi-fi",
+                        "cable output",
+                    ),
+                )
             self._select_device_kind(
                 self.output_device,
                 virtual=False,
@@ -1636,26 +1670,36 @@ class TranslatorWindow(QWidget):
                 avoid_words=("hands-free", "handsfree", "headset", "гарнитур"),
             )
             incoming_virtual_id = self.input_device.currentData()
-            self._select_distinct_virtual(
-                self.duplex_outgoing_output,
-                int(incoming_virtual_id) if incoming_virtual_id is not None else None,
-                self._device_name(self.input_device),
-                preferred_words=(
-                    "blackhole 16ch",
-                    "blackhole 64ch",
-                    # Windows: kiruvchi kanal Hi-Fi kabelni oldi, chiquvchi esa
-                    # base VB-CABLE ("CABLE Input") — ishonchli IKKINCHI kabel.
-                    # 1-Hi-Fi nusxa ("VB-Audio Hi-Fi Cable", "2-"siz) ba'zan
-                    # buzuq/faol emas (PortAudio "Invalid device -9996",
-                    # setcapture NOT_FOUND) — shuning uchun base'ni afzal
-                    # ko'ramiz, Hi-Fi faqat zaxira.
-                    "cable input",
-                    "hi-fi cable",
-                    "vb-audio hi-fi",
-                    "cable-b input",
-                    "cable-a input",
-                ),
+            # Chiquvchi kabel ham ESLAB QOLINADI (kiruvchi kabel bilan bir xil
+            # oiladan bo'lib qolmasligi shart — aks holda tarjima o'z-o'ziga
+            # qaytadi). Mos kelmasa avtomatik tanlovga tushamiz.
+            restored_out = self._restore_saved_cable(
+                self.duplex_outgoing_output, "cables/outgoing_output"
             )
+            if restored_out and virtual_device_family(
+                self._device_name(self.duplex_outgoing_output)
+            ) == virtual_device_family(self._device_name(self.input_device)):
+                restored_out = False
+            if not restored_out:
+                self._select_distinct_virtual(
+                    self.duplex_outgoing_output,
+                    int(incoming_virtual_id) if incoming_virtual_id is not None else None,
+                    self._device_name(self.input_device),
+                    preferred_words=(
+                        "blackhole 16ch",
+                        "blackhole 64ch",
+                        # Windows: kiruvchi kanal Hi-Fi kabelni oldi, chiquvchi
+                        # esa base VB-CABLE ("CABLE Input") — ishonchli IKKINCHI
+                        # kabel. 1-Hi-Fi nusxa ba'zan buzuq/faol emas
+                        # (PortAudio -9996, setcapture NOT_FOUND).
+                        "cable input",
+                        "hi-fi cable",
+                        "vb-audio hi-fi",
+                        "cable-b input",
+                        "cable-a input",
+                    ),
+                )
+            self._remember_cables()
         self._audio_route_changed()
 
     def _refresh_driver_state(self) -> None:
@@ -1942,7 +1986,13 @@ class TranslatorWindow(QWidget):
             elif line.startswith("capture="):
                 self.win_prev_capture = line[len("capture="):].strip()
         if render_match:
-            self._win_audio("setrender", render_match)
+            out_render = self._win_audio("setrender", render_match)
+            # Meet/Zoom KARNAYI aynan shu kabel bo'lishi kerak — aks holda
+            # meeting ovozi ilovaga kelmaydi (suhbatdosh gapirsa eshitilmaydi).
+            self.win_meeting_speaker = (
+                out_render.split("OK:", 1)[1].strip()
+                if out_render.startswith("OK:") else ""
+            )
         if capture_match:
             out = self._win_audio("setcapture", capture_match)
             # ps1 "OK: <aniq nom>" qaytaradi — Meet/Zoom'da AYNAN shu mikrofon
@@ -2650,11 +2700,15 @@ class TranslatorWindow(QWidget):
                 # kabelga yozayotgan bo'lsa, Meet AYNAN o'shaning "Output"
                 # tomonini tanlashi kerak — nomini o'zimiz ko'rsatamiz.
                 meeting_mic = getattr(self, "win_meeting_mic", "")
-                if meeting_mic:
-                    self.meet_mic_hint.setText(
-                        f"🎤 Meet/Zoom mikrofoni: «{meeting_mic}»  "
-                        "(yoki «Same as System»)"
-                    )
+                meeting_speaker = getattr(self, "win_meeting_speaker", "")
+                if meeting_mic or meeting_speaker:
+                    lines = []
+                    if meeting_mic:
+                        lines.append(f"🎤 Meet/Zoom MIKROFONI: «{meeting_mic}»")
+                    if meeting_speaker:
+                        lines.append(f"🔊 Meet/Zoom KARNAYI: «{meeting_speaker}»")
+                    lines.append("(yoki ikkalasini «Same as System» qiling)")
+                    self.meet_mic_hint.setText("\n".join(lines))
                     self.meet_mic_hint.setVisible(True)
                 process_arguments.extend(
                     [
