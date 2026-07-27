@@ -173,7 +173,7 @@ from system_audio import (
 
 
 APP_NAME = "Live Translator"
-APP_VERSION = "0.9.61"
+APP_VERSION = "0.9.62"
 
 # Yordam serveri (Railway): loglarni yuborish va yangilanishni tekshirish.
 # Yuklash tokeni ilova ichida bo'lishi SHART (foydalanuvchi bilmaydi) —
@@ -2588,6 +2588,13 @@ class TranslatorWindow(QWidget):
                 except (TypeError, ValueError):
                     devices_ready = False
         ready = bool(self.api_key and devices_ready and not self.license_check_in_progress)
+        if not ready and not running and getattr(self, "_last_ready_state", None) != ready:
+            print(
+                f"[UI] Start tugmasi O'CHIQ: kalit={bool(self.api_key)} "
+                f"qurilmalar={devices_ready} litsenziya={self.license_check_in_progress}",
+                flush=True,
+            )
+        self._last_ready_state = ready
         self.start_button.setEnabled(not running and ready)
         self.stop_button.setEnabled(running)
         self.direction.setEnabled(not running)
@@ -2634,18 +2641,34 @@ class TranslatorWindow(QWidget):
             tray.setToolTip(f"{APP_NAME} — {shown.capitalize()}")
 
     def start_translator(self) -> None:
+        # DIAGNOSTIKA: "Start bosilmayapti" shikoyatida log jim edi — endi
+        # har bosish va har to'siq yoziladi (masofadan tashxis uchun).
+        print("[UI] Start bosildi", flush=True)
         if self.process is not None or self.license_check_in_progress:
+            print(
+                f"[UI] Start rad: process={self.process is not None} "
+                f"litsenziya_tekshiruvi={self.license_check_in_progress}",
+                flush=True,
+            )
             return
         if not self.api_key:
+            print("[UI] Start rad: API kalit yo'q", flush=True)
             self.edit_settings(required=True)
             return
         if self.input_device.currentData() is None or self.output_device.currentData() is None:
+            print(
+                "[UI] Start rad: qurilma tanlanmagan "
+                f"(kirish={self.input_device.currentData()}, "
+                f"chiqish={self.output_device.currentData()})",
+                flush=True,
+            )
             self._set_status("AUDIO QURILMA TANLANG", "#ef4444")
             return
         if self._current_mode() == "duplex":
             try:
                 validate_duplex_routes(self._duplex_routes())
             except (TypeError, ValueError) as error:
+                print(f"[UI] Start rad: duplex yo'llari xato: {error}", flush=True)
                 self._set_status("IKKINCHI AUDIO YO‘LI KERAK", "#ef4444")
                 self.route_hint.setText(str(error))
                 return
@@ -3101,6 +3124,7 @@ class TranslatorWindow(QWidget):
             self.process.kill()
 
     def stop_translator(self) -> None:
+        print("[UI] Stop bosildi", flush=True)
         if self.process is None:
             return
         self.stop_requested = True
@@ -3504,20 +3528,38 @@ class TranslatorWindow(QWidget):
             return
         if len(devices) < 2 and not forced:
             return  # tanlashga narsa yo'q — bitta chiqish bor
+        # MUHIM: oyna MODAL BO'LMASLIGI kerak. 0.9.61 da modal `exec()`
+        # ishlatilgandi va u asosiy oyna ORQASIDA ochilib, butun ilovani
+        # bloklab qo'ydi — foydalanuvchida Start ham, Stop ham bosilmadi
+        # (log: "Ilova jurnali" bo'm-bo'sh, hech qanday [ROUTING] yo'q).
+        # Endi oddiy oyna: ochiq tursa ham ilova ishlayveradi.
+        existing = getattr(self, "_output_picker", None)
+        if existing is not None and existing.isVisible():
+            existing.raise_()
+            existing.activateWindow()
+            return
         dialog = OutputPickerDialog(
             devices, str(getattr(self, "preferred_output_name", "")), self
         )
-        if dialog.exec() != QDialog.DialogCode.Accepted or not dialog.chosen:
+        dialog.setWindowModality(Qt.WindowModality.NonModal)
+        dialog.accepted.connect(lambda d=dialog: self._output_picked_from_dialog(d))
+        self._output_picker = dialog
+        dialog.show()
+        dialog.raise_()
+        dialog.activateWindow()
+
+    def _output_picked_from_dialog(self, dialog) -> None:  # noqa: ANN001
+        chosen = getattr(dialog, "chosen", "")
+        if not chosen:
             return
-        self.preferred_output_name = dialog.chosen
-        self.settings.setValue("preferred_output", dialog.chosen)
-        position = self.output_device.findText(dialog.chosen)
+        self.preferred_output_name = chosen
+        self.settings.setValue("preferred_output", chosen)
+        position = self.output_device.findText(chosen)
         if position >= 0:
             self.output_device.setCurrentIndex(position)
-        self.route_hint.setText(
-            f"🔈 Tarjima ovozi «{dialog.chosen}» qurilmasidan chiqadi."
-        )
+        self.route_hint.setText(f"🔈 Tarjima ovozi «{chosen}» qurilmasidan chiqadi.")
         self.route_hint.setVisible(True)
+        print(f"[ROUTING] dialogdan tanlandi: {chosen!r}", flush=True)
 
     def _play_output_test(self) -> None:
         """Tanlangan chiqishga qisqa sinov ovozi (0.6s) chiqaradi.
