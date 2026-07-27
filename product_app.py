@@ -173,7 +173,13 @@ from system_audio import (
 
 
 APP_NAME = "Live Translator"
-APP_VERSION = "0.9.57"
+APP_VERSION = "0.9.58"
+
+# Yordam serveri (Railway): loglarni yuborish va yangilanishni tekshirish.
+# Yuklash tokeni ilova ichida bo'lishi SHART (foydalanuvchi bilmaydi) —
+# u faqat log YOZISH huquqini beradi, o'qish alohida admin token bilan.
+SUPPORT_URL = os.getenv("LT_SUPPORT_URL", "https://lt-support-production.up.railway.app")
+SUPPORT_UPLOAD_TOKEN = os.getenv("LT_SUPPORT_TOKEN", "zuioC-x9vEAHXFr4bheYtVCfPDMqNqrM")
 KEYRING_SERVICE = "local.live-translator"
 KEYRING_ACCOUNT = "edcom-api-key"
 KEYRING_LICENSE_ACCOUNT = "license-key"
@@ -223,6 +229,15 @@ def is_expected_engine_exit(exit_code: int, stop_requested: bool) -> bool:
 class DriverSignals(QObject):
     ready = Signal(str)
     failed = Signal(str)
+
+
+class SupportSignals(QObject):
+    finished = Signal(str)
+
+
+class UpdateSignals(QObject):
+    available = Signal(str, str)
+    downloaded = Signal(str)
 
 
 class LicenseSignals(QObject):
@@ -469,6 +484,12 @@ class TranslatorWindow(QWidget):
         self.heartbeat_in_progress = False
         self.heartbeat_failures = 0
         self.audio_devices_initialized = False
+        self.support_signals = SupportSignals()
+        self.support_signals.finished.connect(self._support_finished)
+        self.update_signals = UpdateSignals()
+        self.update_signals.available.connect(self._update_available)
+        self.update_signals.downloaded.connect(self._update_downloaded)
+        self.update_url = ""
         self.driver_signals = DriverSignals()
         self.driver_signals.ready.connect(self._driver_installer_ready)
         self.driver_signals.failed.connect(self._driver_installer_failed)
@@ -480,6 +501,7 @@ class TranslatorWindow(QWidget):
         self._build_ui()
         self._refresh_driver_state()
         QTimer.singleShot(250, self._first_run)
+        QTimer.singleShot(4000, self._check_for_update)
         self.driver_timer = QTimer(self)
         self.driver_timer.timeout.connect(self._refresh_driver_state)
         self.driver_timer.start(4000)
@@ -795,6 +817,19 @@ class TranslatorWindow(QWidget):
         self.meet_mic_hint.setVisible(False)
         layout.addWidget(self.meet_mic_hint)
 
+        # Yangilanish xabari va tugmasi (yordam serveridan bilinadi).
+        self.update_hint = QLabel("")
+        self.update_hint.setWordWrap(True)
+        self.update_hint.setStyleSheet(
+            "color: #86efac; font-size: 11px; font-weight: 600;"
+        )
+        self.update_hint.setVisible(False)
+        layout.addWidget(self.update_hint)
+        self.update_button = QPushButton("")
+        self.update_button.setVisible(False)
+        self.update_button.clicked.connect(self._install_update)
+        layout.addWidget(self.update_button)
+
         self.caption_panel = QFrame()
         self.caption_panel.setObjectName("captionPanel")
         self.caption_panel.setStyleSheet(
@@ -978,6 +1013,8 @@ class TranslatorWindow(QWidget):
         # log yig‘ish (ZIP), mikrofon/karnay tiklash — olib tashlandi.
         open_logs_action = menu.addAction(t("Loglarni ochish"))
         open_logs_action.triggered.connect(self._open_logs_folder)
+        send_logs_action = menu.addAction(t("Loglarni yuborish (yordam uchun)"))
+        send_logs_action.triggered.connect(self.send_logs_to_support)
         menu.addSeparator()
         # Interfeys tili — avtomatik aniqlanadi, shu yerdan o'zgartiriladi.
         self.tray_ui_lang_menu = menu.addMenu(t("Interfeys tili"))
@@ -2187,6 +2224,174 @@ class TranslatorWindow(QWidget):
         if platform.system() == "Darwin":
             return Path.home() / "Library" / "Logs" / APP_NAME / "engine.log"
         return Path(os.getenv("LOCALAPPDATA", str(Path.home()))) / APP_NAME / "engine.log"
+
+    def _collect_logs_text(self) -> str:
+        """Yuborish uchun loglarni bitta matnga yig'adi (oxirgi qismlari)."""
+        parts: list[str] = [
+            f"=== {APP_NAME} {APP_VERSION} ===",
+            f"OS: {platform.system()} {platform.release()} ({platform.machine()})",
+            f"Vaqt: {datetime.now():%Y-%m-%d %H:%M:%S}",
+            f"Oxirgi xato: {self.last_engine_error or '-'}",
+            "",
+        ]
+        engine = self.engine_log_path
+        for path, title, limit in (
+            (engine.with_name("app.log"), "APP.LOG", 40_000),
+            (engine, "ENGINE.LOG", 120_000),
+            (engine.with_suffix(".prev.log"), "ENGINE.PREV.LOG", 40_000),
+        ):
+            try:
+                if not path.exists():
+                    continue
+                text = path.read_text(encoding="utf-8", errors="replace")
+                parts.append(f"----- {title} ({path.name}) -----")
+                parts.append(text[-limit:])
+                parts.append("")
+            except OSError:
+                continue
+        return "\n".join(parts)
+
+    def send_logs_to_support(self) -> None:
+        """Loglarni yordam serveriga yuboradi (bitta tugma).
+
+        Sabab: ilova turli kompyuterlarga o'rnatiladi (boshliq, hamkasblar),
+        ularda SSH yo'q va log faylni har safar qo'lda olib kelish noqulay
+        edi. Endi foydalanuvchi bitta tugma bosadi."""
+        if not SUPPORT_URL or not SUPPORT_UPLOAD_TOKEN:
+            self._set_status("YUBORISH SOZLANMAGAN", "#ef4444")
+            return
+        self._set_status("LOG YUBORILMOQDA…", "#f59e0b")
+        threading.Thread(target=self._send_logs_worker, daemon=True).start()
+
+    def _send_logs_worker(self) -> None:
+        try:
+            body = self._collect_logs_text().encode("utf-8", "replace")
+            device = f"{platform.node()}"
+            boundary = "----LiveTranslator" + uuid.uuid4().hex
+            def part(name: str, value: str) -> bytes:
+                return (
+                    f"--{boundary}\r\nContent-Disposition: form-data; "
+                    f'name="{name}"\r\n\r\n{value}\r\n'
+                ).encode("utf-8")
+
+            payload = b"".join(
+                [
+                    part("version", APP_VERSION),
+                    part("device", device),
+                    part("note", (self.last_engine_error or "")[:200]),
+                    (
+                        f"--{boundary}\r\nContent-Disposition: form-data; "
+                        'name="file"; filename="logs.log"\r\n'
+                        "Content-Type: text/plain\r\n\r\n"
+                    ).encode("utf-8"),
+                    body,
+                    f"\r\n--{boundary}--\r\n".encode("utf-8"),
+                ]
+            )
+            request = urllib.request.Request(
+                f"{SUPPORT_URL.rstrip('/')}/logs",
+                data=payload,
+                method="POST",
+                headers={
+                    "Content-Type": f"multipart/form-data; boundary={boundary}",
+                    "x-lt-token": SUPPORT_UPLOAD_TOKEN,
+                },
+            )
+            with urllib.request.urlopen(
+                request, timeout=30, context=secure_ssl_context()
+            ) as response:
+                ok = response.status == 200
+            self.support_signals.finished.emit(
+                "LOG YUBORILDI ✓" if ok else "YUBORILMADI"
+            )
+        except Exception as error:
+            print(f"[SUPPORT] log yuborilmadi: {error}", flush=True)
+            self.support_signals.finished.emit(f"YUBORILMADI: {str(error)[:60]}")
+
+    def _support_finished(self, message: str) -> None:
+        colour = "#22c55e" if "✓" in message else "#ef4444"
+        self._set_status(message, colour)
+        QTimer.singleShot(6000, self._sync_status_after_send)
+
+    def _sync_status_after_send(self) -> None:
+        if self.process is None:
+            self._set_status("TAYYOR", "#94a3b8")
+
+    def _check_for_update(self) -> None:
+        """Yangi versiya bor-yo'qligini serverdan so'raydi (fon rejimida)."""
+        if not SUPPORT_URL:
+            return
+        threading.Thread(target=self._update_check_worker, daemon=True).start()
+
+    def _update_check_worker(self) -> None:
+        try:
+            request = urllib.request.Request(f"{SUPPORT_URL.rstrip('/')}/update")
+            with urllib.request.urlopen(
+                request, timeout=15, context=secure_ssl_context()
+            ) as response:
+                data = json.loads(response.read().decode("utf-8", "replace"))
+            latest = str(data.get("version", "")).strip()
+            url = str(data.get("url", "")).strip()
+            if not latest or not url:
+                return
+            if self._version_tuple(latest) <= self._version_tuple(APP_VERSION):
+                return
+            self.update_signals.available.emit(latest, url)
+        except Exception as error:
+            print(f"[UPDATE] tekshirib bo'lmadi: {error}", flush=True)
+
+    @staticmethod
+    def _version_tuple(value: str) -> tuple[int, ...]:
+        parts = []
+        for chunk in re.split(r"[.\-+]", value.strip()):
+            parts.append(int(chunk) if chunk.isdigit() else 0)
+        return tuple(parts[:4] or [0])
+
+    def _update_available(self, version: str, url: str) -> None:
+        self.update_url = url
+        self.update_hint.setText(
+            f"⬆️ Yangi versiya tayyor: {version}. Yuklab olish uchun bosing."
+        )
+        self.update_hint.setVisible(True)
+        self.update_button.setText(f"⬆️ {version} ni o‘rnatish")
+        self.update_button.setVisible(True)
+
+    def _install_update(self) -> None:
+        """Yangi o'rnatuvchini yuklab, ishga tushiradi (ilova yopiladi)."""
+        url = getattr(self, "update_url", "")
+        if not url:
+            return
+        self.update_button.setEnabled(False)
+        self.update_button.setText("YUKLANMOQDA…")
+        threading.Thread(target=self._install_update_worker, args=(url,), daemon=True).start()
+
+    def _install_update_worker(self, url: str) -> None:
+        try:
+            target = Path(tempfile.gettempdir()) / url.rsplit("/", 1)[-1]
+            with urllib.request.urlopen(
+                url, timeout=300, context=secure_ssl_context()
+            ) as response, target.open("wb") as out:
+                shutil.copyfileobj(response, out)
+            self.update_signals.downloaded.emit(str(target))
+        except Exception as error:
+            self.update_signals.downloaded.emit(f"XATO: {error}")
+
+    def _update_downloaded(self, path: str) -> None:
+        if path.startswith("XATO:"):
+            self.update_button.setEnabled(True)
+            self.update_button.setText("⬆️ Qayta urinish")
+            self.update_hint.setText(f"Yuklab bo‘lmadi: {path[5:][:120]}")
+            return
+        # O'rnatuvchi ishlab turgan ilovani o'zi yopadi (PrepareToInstall).
+        try:
+            if platform.system() == "Windows":
+                os.startfile(path)  # noqa: S606
+            else:
+                subprocess.Popen(["open", path])
+        except Exception as error:
+            self.update_hint.setText(f"O‘rnatuvchi ochilmadi: {error}")
+            return
+        self.update_hint.setText("O‘rnatuvchi ochildi — ko‘rsatmaga amal qiling.")
 
     def _direction_changed(self, _index: int = -1) -> None:
         self.settings.setValue("translation/active_mode", self._current_mode())
