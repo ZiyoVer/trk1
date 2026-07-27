@@ -29,6 +29,8 @@ Set-Content -Encoding UTF8 $RuntimeHook "import os`nos.environ.setdefault(`"LIVE
     --collect-all sounddevice `
     --collect-data certifi `
     --add-data "$Root\packaging\windows\audio_config.ps1;." `
+    --add-data "$Root\packaging\windows\drivers\VBCABLE_Driver_Pack45.zip;drivers" `
+    --add-data "$Root\packaging\windows\drivers\HiFiCableAsioBridgeSetup_v1007.zip;drivers" `
     --collect-submodules keyring.backends `
     --runtime-hook $RuntimeHook `
     product_app.py
@@ -60,7 +62,7 @@ if (-not (Test-Path $Iscc)) {
 & $Iscc packaging\windows\LiveTranslator.iss
 if ($LASTEXITCODE -ne 0) { throw "Inno Setup kompilyatsiyasi muvaffaqiyatsiz (exit $LASTEXITCODE)" }
 
-$Installer = Join-Path $Root "installer\windows\LiveTranslator-Setup-0.9.46.exe"
+$Installer = Join-Path $Root "installer\windows\LiveTranslator-Setup-0.9.47.exe"
 if (-not (Test-Path $Installer)) { throw "Installer yaratilmadi: $Installer" }
 if ($SignTool) {
     & $SignTool sign /sha1 $env:WINDOWS_SIGN_CERT_SHA1 /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 $Installer

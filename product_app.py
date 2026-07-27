@@ -8,6 +8,7 @@ import os
 import platform
 import plistlib
 import shutil
+import ssl
 import subprocess
 import sys
 import tempfile
@@ -171,7 +172,7 @@ from system_audio import (
 
 
 APP_NAME = "Live Translator"
-APP_VERSION = "0.9.46"
+APP_VERSION = "0.9.47"
 KEYRING_SERVICE = "local.live-translator"
 KEYRING_ACCOUNT = "edcom-api-key"
 KEYRING_LICENSE_ACCOUNT = "license-key"
@@ -1670,7 +1671,10 @@ class TranslatorWindow(QWidget):
                     # Duplex'ning ikkinchi kabeli — bepul Hi-Fi Cable.
                     archive = Path(tempfile.gettempdir()) / "HiFiCable.zip"
                     folder = Path(tempfile.gettempdir()) / "LiveTranslator-HiFiCable"
-                    self._download_verified(HIFI_CABLE_URL, archive, HIFI_CABLE_SHA256)
+                    self._obtain_driver_archive(
+                        "HiFiCableAsioBridgeSetup_v1007.zip",
+                        HIFI_CABLE_URL, HIFI_CABLE_SHA256, archive,
+                    )
                     shutil.rmtree(folder, ignore_errors=True)
                     folder.mkdir(parents=True)
                     with zipfile.ZipFile(archive) as package:
@@ -1686,7 +1690,10 @@ class TranslatorWindow(QWidget):
                 else:
                     archive = Path(tempfile.gettempdir()) / "VBCABLE_Driver_Pack45.zip"
                     folder = Path(tempfile.gettempdir()) / "LiveTranslator-VBCABLE"
-                    self._download_verified(VBCABLE_URL, archive, VBCABLE_SHA256)
+                    self._obtain_driver_archive(
+                        "VBCABLE_Driver_Pack45.zip",
+                        VBCABLE_URL, VBCABLE_SHA256, archive,
+                    )
                     shutil.rmtree(folder, ignore_errors=True)
                     folder.mkdir(parents=True)
                     with zipfile.ZipFile(archive) as package:
@@ -1714,14 +1721,60 @@ class TranslatorWindow(QWidget):
 
     @staticmethod
     def _download_verified(url: str, path: Path, expected_sha256: str) -> None:
-        with urllib.request.urlopen(
-            url, timeout=60, context=secure_ssl_context()
-        ) as response, path.open("wb") as output:
-            shutil.copyfileobj(response, output)
+        def fetch(context) -> None:  # noqa: ANN001
+            with urllib.request.urlopen(
+                url, timeout=60, context=context
+            ) as response, path.open("wb") as output:
+                shutil.copyfileobj(response, output)
+
+        try:
+            fetch(secure_ssl_context())
+        except Exception as error:
+            # Korporativ tarmoqlarda TLS trafik tekshiriladi va sertifikatni
+            # kompaniyaning O'Z ildiz sertifikati imzolaydi — u certifi
+            # to'plamida yo'q, lekin Windows sertifikat do'konida bor
+            # (CERTIFICATE_VERIFY_FAILED: unable to get local issuer).
+            # Shu sabab tizim do'koni bilan qayta urinamiz.
+            if "CERTIFICATE" not in str(error).upper():
+                raise
+            print(f"[DRIVER] certifi bilan bo‘lmadi ({error}); tizim CA bilan urinamiz", flush=True)
+            fetch(ssl.create_default_context())
         digest = hashlib.sha256(path.read_bytes()).hexdigest()
         if digest != expected_sha256:
             path.unlink(missing_ok=True)
             raise RuntimeError("Driver checksum mos kelmadi; o‘rnatish bekor qilindi.")
+
+    @staticmethod
+    def _bundled_driver(filename: str, expected_sha256: str) -> Path | None:
+        """Ilova ICHIGA qo'shilgan drayver arxivi (internet kerak emas).
+
+        Yuklab olish korporativ tarmoqda SSL sertifikat xatosi bilan
+        yiqilardi ("unable to get local issuer certificate") va drayver
+        umuman o'rnatilmasdi. Arxiv endi ilova bilan birga keladi."""
+        candidate = resource_path(f"drivers/{filename}")
+        try:
+            if not candidate.exists():
+                return None
+            digest = hashlib.sha256(candidate.read_bytes()).hexdigest()
+            if digest != expected_sha256:
+                print(f"[DRIVER] ichki nusxa buzuq: {filename}", flush=True)
+                return None
+            return candidate
+        except Exception as error:
+            print(f"[DRIVER] ichki nusxa o‘qilmadi: {error}", flush=True)
+            return None
+
+    def _obtain_driver_archive(
+        self, filename: str, url: str, expected_sha256: str, target: Path
+    ) -> None:
+        """Drayver arxivini tayyorlaydi: avval ILOVA ICHIDAN, bo'lmasa yuklab."""
+        bundled = self._bundled_driver(filename, expected_sha256)
+        if bundled is not None:
+            shutil.copyfile(bundled, target)
+            print(f"[DRIVER] ichki nusxadan olindi: {filename}", flush=True)
+            return
+        print(f"[DRIVER] internetdan yuklanmoqda: {url}", flush=True)
+        self._download_verified(url, target, expected_sha256)
 
     def _restore_speaker_clicked(self) -> None:
         result = self.restore_windows_default_speaker()
