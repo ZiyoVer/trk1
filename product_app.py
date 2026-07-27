@@ -173,7 +173,7 @@ from system_audio import (
 
 
 APP_NAME = "Live Translator"
-APP_VERSION = "0.9.62"
+APP_VERSION = "0.9.63"
 
 # Yordam serveri (Railway): loglarni yuborish va yangilanishni tekshirish.
 # Yuklash tokeni ilova ichida bo'lishi SHART (foydalanuvchi bilmaydi) —
@@ -307,6 +307,13 @@ class OutputPickerDialog(QDialog):
 class DriverSignals(QObject):
     ready = Signal(str)
     failed = Signal(str)
+
+
+class DeviceScanSignals(QObject):
+    """Qurilmalarni sanash NATIJALARI (fon oqimidan GUI'ga)."""
+
+    signature = Signal(tuple)
+    drivers = Signal(list)
 
 
 class SupportSignals(QObject):
@@ -562,6 +569,13 @@ class TranslatorWindow(QWidget):
         self.heartbeat_in_progress = False
         self.heartbeat_failures = 0
         self.audio_devices_initialized = False
+        # Qurilma skanerlari FON oqimida ishlaydi (pastdagi izohga qarang).
+        self._sd_lock = threading.Lock()
+        self._scan_busy = False
+        self._driver_scan_busy = False
+        self.device_scan_signals = DeviceScanSignals()
+        self.device_scan_signals.signature.connect(self._device_signature_ready)
+        self.device_scan_signals.drivers.connect(self._apply_driver_state)
         self.support_signals = SupportSignals()
         self.support_signals.finished.connect(self._support_finished)
         self.update_signals = UpdateSignals()
@@ -1785,7 +1799,25 @@ class TranslatorWindow(QWidget):
         self._audio_route_changed()
 
     def _refresh_driver_state(self) -> None:
-        drivers = self._virtual_driver_names(refresh=self.process is None)
+        """Drayverlar ro'yxatini FON oqimida yangilaydi (GUI qotmasin)."""
+        if self._driver_scan_busy:
+            return
+        self._driver_scan_busy = True
+        refresh = self.process is None
+        threading.Thread(
+            target=self._scan_drivers_worker, args=(refresh,), daemon=True
+        ).start()
+
+    def _scan_drivers_worker(self, refresh: bool) -> None:
+        try:
+            with self._sd_lock:
+                drivers = self._virtual_driver_names(refresh=refresh)
+        except Exception:
+            drivers = []
+        self.device_scan_signals.drivers.emit(list(drivers))
+
+    def _apply_driver_state(self, drivers: list) -> None:
+        self._driver_scan_busy = False
         driver = drivers[0] if drivers else None
         virtual_families = {virtual_device_family(name) for name in drivers}
         is_windows = platform.system() == "Windows"
@@ -3683,7 +3715,27 @@ class TranslatorWindow(QWidget):
         """
         if self.process is None or platform.system() == "Darwin":
             return
-        signature = self._output_device_signature()
+        # DIQQAT: qurilmalarni sanash PortAudio'ni QAYTA YUKLAYDI va
+        # Windows'da 0.5-3 SONIYA oladi. Ilgari bu GUI oqimida, har 3
+        # soniyada bajarilardi — ilova muntazam QOTIB turardi (foydalanuvchi:
+        # "asabni buzib yuboryapti"). Endi fon oqimida, natija signal orqali.
+        if self._scan_busy:
+            return
+        self._scan_busy = True
+        threading.Thread(target=self._scan_signature_worker, daemon=True).start()
+
+    def _scan_signature_worker(self) -> None:
+        try:
+            with self._sd_lock:
+                signature = self._output_device_signature()
+        except Exception:
+            signature = ()
+        self.device_scan_signals.signature.emit(signature)
+
+    def _device_signature_ready(self, signature: tuple) -> None:
+        self._scan_busy = False
+        if self.process is None:
+            return
         if not signature or signature == self.device_signature:
             return
         self.device_signature = signature
