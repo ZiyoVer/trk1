@@ -526,7 +526,7 @@ class WinAECCapture:
     # Bu oyna davomida gapirish mikrofoni JIM (worker hali audio bermagan),
     # shuning uchun uzun bo'lmasligi kerak: 4s yetarli, aks holda
     # foydalanuvchining birinchi gapi yo'qoladi.
-    FIRST_DATA_TIMEOUT = 4.0
+    FIRST_DATA_TIMEOUT = 9.0
 
     def __init__(self, mic_device, speaker_name, deliver, on_fallback, log=print):  # noqa: ANN001
         self.mic_device = mic_device

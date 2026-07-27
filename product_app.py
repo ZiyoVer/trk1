@@ -173,7 +173,7 @@ from system_audio import (
 
 
 APP_NAME = "Live Translator"
-APP_VERSION = "0.9.56"
+APP_VERSION = "0.9.57"
 KEYRING_SERVICE = "local.live-translator"
 KEYRING_ACCOUNT = "edcom-api-key"
 KEYRING_LICENSE_ACCOUNT = "license-key"
@@ -2765,6 +2765,24 @@ class TranslatorWindow(QWidget):
                 self._set_status("TARJIMA ISHLAYAPTI", "#22c55e")
             self.connected = True
             self.connection_timer.stop()
+            return
+        if "[AEC] ishlamadi" in line:
+            # Exo-bekor qilish ishga tushmadi -> dvigatel push-to-talk'ga
+            # o'tdi. Ilgari ekranda "erkin gapiring" deb turaverardi va
+            # foydalanuvchi Ctrl bosmasdan gapirib, hech kim eshitmasdi
+            # (jonli nosozlik: "boshqa kompyuterda eshitilmayapti").
+            self.route_hint.setText(
+                "🎤 Exo-bekor qilish ishga tushmadi — GAPIRISH uchun CTRL "
+                "(chap yoki o‘ng) tugmasini BOSIB TURING. Naushnik ulasangiz "
+                "bosish shart emas."
+            )
+            self.route_hint.setVisible(True)
+            return
+        if "[AEC] ISHLADI" in line:
+            self.route_hint.setText(
+                "🔊 Exo-bekor qilish faol — tugma bosmasdan erkin gapiring."
+            )
+            self.route_hint.setVisible(True)
             return
         if "qayta ulanadi" in line:
             self._set_status("QAYTA ULANMOQDA…", "#f59e0b")

@@ -368,6 +368,7 @@ class Translator:
         # Chiqish oqimi nazoratchisi uchun (_check_playback_alive).
         self._last_seen_output_bytes = 0
         self._last_audio_recv_at = 0.0
+        self._audio_episode_start = 0.0
         self._last_reopen_at = 0.0
         # Gemini transkriptni OQIM bilan yuboradi: bir gap bir necha marta,
         # to'ldirilib qayta keladi. Har bo'lakni alohida qator qilib chiqarsak
@@ -653,6 +654,9 @@ class Translator:
             return
         now = time.monotonic()
         if self.output_bytes != self._last_seen_output_bytes:
+            if now - self._last_audio_recv_at > 5.0:
+                # Uzoq jimlikdan keyin YANGI audio epizodi boshlandi.
+                self._audio_episode_start = now
             self._last_seen_output_bytes = self.output_bytes
             self._last_audio_recv_at = now
         recv = self._last_audio_recv_at
@@ -661,6 +665,12 @@ class Translator:
         played = player.last_active_output
         healthy = played > 0.0 and (recv - played) <= self.PLAYBACK_STALL_SECONDS
         if healthy:
+            return
+        # MUHIM: audio endigina kela boshlagan bo'lsa, ijro hali boshlanmagan
+        # bo'lishi TABIIY (bufer to'ladi, keyin chiqadi). Bunga vaqt bermasak
+        # nazoratchi har sessiya boshida bekordan-bekor oqimni qayta ochadi
+        # (jonli logda aynan shunday bo'ldi: ulanishdan 4s keyin).
+        if now - self._audio_episode_start < self.PLAYBACK_STALL_SECONDS:
             return
         if now - self._last_reopen_at < self.REOPEN_COOLDOWN_SECONDS:
             return  # yaqinda qayta ochdik — takror urinmaymiz
