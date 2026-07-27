@@ -7,6 +7,7 @@ import os
 import platform
 import socket
 import ssl
+import tempfile
 import sys
 import urllib.error
 import urllib.parse
@@ -42,7 +43,7 @@ def ca_bundle_path() -> str:
 def secure_ssl_context() -> ssl.SSLContext:
     """Bundle ichidagi Python macOS tizim CA do'konini ko'rmaydi — mavjud
     bo'lsa certifi to'plamidan foydalanamiz, aks holda tizim standarti."""
-    bundle = ca_bundle_path()
+    bundle = _combined_bundle_path() or ca_bundle_path()
     if bundle:
         try:
             return ssl.create_default_context(cafile=bundle)
@@ -51,10 +52,74 @@ def secure_ssl_context() -> ssl.SSLContext:
     return ssl.create_default_context()
 
 
+def _system_root_pem() -> str:
+    """Windows sertifikat do'konidagi ISHONCHLI ildiz sertifikatlar (PEM).
+
+    Korporativ tarmoqlarda TLS trafik tekshiriladi (proxy) va serverning
+    sertifikatini KOMPANIYA ildiz sertifikati imzolaydi. U certifi
+    to'plamida yo'q, lekin Windows do'koniga tarqatilgan bo'ladi.
+    """
+    if platform.system() != "Windows":
+        return ""
+    server_auth = "1.3.6.1.5.5.7.3.1"
+    blocks: list[str] = []
+    for store in ("ROOT", "CA"):
+        try:
+            certificates = ssl.enum_certificates(store)
+        except Exception:
+            continue
+        for cert, encoding, trust in certificates:
+            if encoding != "x509_asn":
+                continue
+            # trust: True (hamma maqsad uchun) yoki OID to'plami
+            if trust is not True and (not trust or server_auth not in trust):
+                continue
+            try:
+                blocks.append(ssl.DER_cert_to_PEM_cert(cert))
+            except Exception:
+                continue
+    return "".join(blocks)
+
+
+def _combined_bundle_path() -> str:
+    """certifi + tizim ildizlari birlashgan CA fayli (yoki bo'sh satr).
+
+    Faqat certifi ishlatilsa korporativ tarmoqda HAMMA TLS ulanish o'ladi
+    (CERTIFICATE_VERIFY_FAILED: unable to get local issuer certificate) —
+    Gemini'ga ulanish ham, drayver yuklab olish ham. Ikkala manbani
+    birlashtiramiz: ochiq internet ham, kompaniya proxy'si ham ishlaydi.
+    """
+    system_pem = _system_root_pem()
+    if not system_pem:
+        return ""  # tizim do'koni yo'q/bo'sh — odatdagi certifi yo'li
+    base = ca_bundle_path()
+    try:
+        certifi_pem = ""
+        if base:
+            with open(base, encoding="utf-8", errors="ignore") as handle:
+                certifi_pem = handle.read()
+        folder = os.path.join(
+            os.environ.get("LOCALAPPDATA") or tempfile.gettempdir(),
+            "Live Translator",
+        )
+        os.makedirs(folder, exist_ok=True)
+        target = os.path.join(folder, "ca-bundle.pem")
+        with open(target, "w", encoding="utf-8") as handle:
+            handle.write(certifi_pem)
+            if certifi_pem and not certifi_pem.endswith("\n"):
+                handle.write("\n")
+            handle.write(system_pem)
+        # Buzuq fayl OpenSSL'ni butunlay sindiradi — yozgach TEKSHIRAMIZ.
+        ssl.create_default_context(cafile=target)
+        return target
+    except Exception:
+        return ""
+
+
 def ensure_ca_bundle_env() -> None:
     """CA yo'lini butun jarayon (va child dvigatel) uchun e'lon qiladi —
     FAQAT fayl haqiqatan mavjud bo'lsa."""
-    bundle = ca_bundle_path()
+    bundle = _combined_bundle_path() or ca_bundle_path()
     if not bundle:
         return
     os.environ.setdefault("SSL_CERT_FILE", bundle)
