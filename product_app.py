@@ -173,7 +173,7 @@ from system_audio import (
 
 
 APP_NAME = "Live Translator"
-APP_VERSION = "0.9.59"
+APP_VERSION = "0.9.60"
 
 # Yordam serveri (Railway): loglarni yuborish va yangilanishni tekshirish.
 # Yuklash tokeni ilova ichida bo'lishi SHART (foydalanuvchi bilmaydi) —
@@ -1979,6 +1979,27 @@ class TranslatorWindow(QWidget):
         """
         if platform.system() != "Windows":
             return
+        # TEZKOR YO'L: hammasi BITTA PowerShell chaqiruvida. Har chaqiruv C#
+        # kompilyatsiya qilgani uchun ~2 soniya ketardi va Start bosilganda
+        # ilova bir necha soniya QOTIB qolardi (foydalanuvchi shikoyati:
+        # "bosilmay qolyapti"). Eski ko'p-chaqiruvli yo'l zaxira sifatida
+        # qoladi (eski ps1 bilan ham ishlashi uchun).
+        combined = self._win_audio(
+            "startduplex", f"{render_match}|{capture_match}"
+        )
+        values: dict[str, str] = {}
+        for line in combined.splitlines():
+            if "=" in line:
+                key, _, value = line.partition("=")
+                values[key.strip()] = value.strip()
+        if "prevrender" in values or "prevcapture" in values:
+            self.win_prev_render = values.get("prevrender", "")
+            self.win_prev_capture = values.get("prevcapture", "")
+            self.win_meeting_speaker = values.get("render", "")
+            self.win_meeting_mic = values.get("capture", "")
+            self.win_physical_output = values.get("physical", "")
+            return
+        # --- Zaxira: eski, ko'p chaqiruvli yo'l ---
         out = self._win_audio("getdefaults")
         for line in out.splitlines():
             if line.startswith("render="):
@@ -2022,23 +2043,32 @@ class TranslatorWindow(QWidget):
         #      keyin ovoz umuman eshitilmay qolardi).
         #   2) Start'dan oldingi tizim default'i.
         #   3) Avtomatik: naushnik-afzal fizik chiqish.
-        restored = False
+        wanted_render = ""
         for candidate in (
             getattr(self, "preferred_output_name", ""),
             getattr(self, "win_prev_render", ""),
         ):
-            if not candidate or is_virtual_device(candidate):
-                continue
-            if self._win_audio("setrender", candidate).startswith("OK"):
-                restored = True
+            if candidate and not is_virtual_device(candidate):
+                wanted_render = candidate
                 break
-        if not restored:
-            self._win_audio("restorerender")
-        # Mikrofon — Start'dan oldingi fizik default, aks holda birinchi fizik.
-        if prev_capture and not is_virtual_device(prev_capture):
-            self._win_audio("setcapture", prev_capture)
-        else:
-            self._win_audio("restorecapture")
+        wanted_capture = (
+            prev_capture if prev_capture and not is_virtual_device(prev_capture) else ""
+        )
+        # BITTA chaqiruv (ps1 o'zi zaxira variantlarni ham bajaradi): Stop
+        # bosilganda ilova qotib qolmasligi uchun.
+        out = self._win_audio("stopduplex", f"{wanted_render}|{wanted_capture}")
+        if "render=" not in out:
+            # Zaxira: eski ko'p-chaqiruvli yo'l (eski ps1 bilan ishlaydi).
+            if wanted_render and self._win_audio(
+                "setrender", wanted_render
+            ).startswith("OK"):
+                pass
+            else:
+                self._win_audio("restorerender")
+            if wanted_capture:
+                self._win_audio("setcapture", wanted_capture)
+            else:
+                self._win_audio("restorecapture")
         self.win_prev_render = ""
         self.win_prev_capture = ""
 
@@ -2399,10 +2429,21 @@ class TranslatorWindow(QWidget):
 
     def _update_available(self, version: str, url: str) -> None:
         self.update_url = url
-        self.update_hint.setText(
-            f"⬆️ Yangi versiya tayyor: {version}. Yuklab olish uchun bosing."
-        )
         self.update_hint.setVisible(True)
+        if self.process is None:
+            # AVTOMATIK: tarjima ishlamayotgan bo'lsa foydalanuvchi hech
+            # narsa bosmaydi — ilova o'zi yuklab, o'rnatuvchini ochadi
+            # (foydalanuvchi talabi: "update kelsa avtomatik update qilsin").
+            self.update_hint.setText(
+                f"⬆️ Yangi versiya {version} — avtomatik yuklanmoqda…"
+            )
+            self.update_button.setVisible(False)
+            self._install_update()
+            return
+        # Tarjima KETAYOTGAN bo'lsa uzmaymiz: tugma bilan o'zi tanlaydi.
+        self.update_hint.setText(
+            f"⬆️ Yangi versiya {version} tayyor. Tarjima tugagach o‘rnating."
+        )
         self.update_button.setText(f"⬆️ {version} ni o‘rnatish")
         self.update_button.setVisible(True)
 
@@ -2630,11 +2671,12 @@ class TranslatorWindow(QWidget):
                     elif prev and not is_virtual_device(prev):
                         incoming_output_arg = prev
                     else:
-                        chosen = ""
-                        try:
-                            chosen = self._win_audio("findoutput").strip()
-                        except Exception:
-                            chosen = ""
+                        # startduplex allaqachon "physical=" qaytargan —
+                        # QO'SHIMCHA PowerShell chaqiruvi kerak emas (tezlik).
+                        chosen = getattr(self, "win_physical_output", "")
+                        if not chosen:
+                            with suppress(Exception):
+                                chosen = self._win_audio("findoutput").strip()
                         if chosen and not is_virtual_device(chosen):
                             incoming_output_arg = chosen
                 # FEEDBACK-GATE O'CHIRILDI (v0.9.33). Sabab: suhbatdosh
@@ -2710,6 +2752,18 @@ class TranslatorWindow(QWidget):
                     lines.append("(yoki ikkalasini «Same as System» qiling)")
                     self.meet_mic_hint.setText("\n".join(lines))
                     self.meet_mic_hint.setVisible(True)
+                # Tarjima ovozi QAYSI qurilmadan chiqishini aniq aytamiz.
+                # Jonli nosozlik: matn ko'rinadi, ovoz eshitilmaydi — chunki
+                # ilova tizim default'iga (Realtek) chiqaradi, foydalanuvchi
+                # esa monitor/eshitgichdan eshitadi. Ilova buni BILA OLMAYDI,
+                # shuning uchun nomini ko'rsatib, almashtirishni eslatamiz.
+                heard_on = incoming_out_name or "?"
+                self.route_hint.setText(
+                    f"🔈 Tarjima ovozi «{heard_on}» qurilmasidan chiqadi. "
+                    "Eshitmasangiz — yuqoridagi ESHITAMAN ro'yxatidan boshqasini "
+                    "tanlab «▶ Sinov» bosing."
+                )
+                self.route_hint.setVisible(True)
                 process_arguments.extend(
                     [
                         "--duplex",

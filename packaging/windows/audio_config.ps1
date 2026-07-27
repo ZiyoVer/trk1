@@ -250,5 +250,30 @@ switch ($Action) {
   "restorerender"  { $r = [LTAudio.Cfg]::SetDefaultPhysicalPreferred(0); if ($r) { "OK: $r" } else { "NOT_FOUND" } }
   "restorecapture" { $c = [LTAudio.Cfg]::SetDefaultByName(1, "", $true); if ($c) { "OK: $c" } else { "NOT_FOUND" } }
   "findoutput" { $r = [LTAudio.Cfg]::FindPhysicalPreferred(0); if ($r) { $r } else { "" } }
+
+  # BITTA CHAQIRUVDA hammasi. Har PowerShell ishga tushishi C# kompilyatsiya
+  # qiladi (~2s), Start/Stop'da esa 3-4 marta chaqirilardi — ilova 5-10
+  # soniya QOTIB turardi ("bosilmay qolyapti"). Endi Start uchun ham, Stop
+  # uchun ham bitta chaqiruv yetadi.
+  # -Name "<render>|<capture>" ko'rinishida ikkita qiymat beriladi.
+  "startduplex" {
+    $p = $Name -split '\|', 2
+    Write-Output ("prevrender=" + [LTAudio.Cfg]::GetDefaultName(0))
+    Write-Output ("prevcapture=" + [LTAudio.Cfg]::GetDefaultName(1))
+    if ($p[0]) { Write-Output ("render=" + [LTAudio.Cfg]::SetDefaultByName(0, $p[0], $false)) }
+    if ($p.Count -gt 1 -and $p[1]) { Write-Output ("capture=" + [LTAudio.Cfg]::SetDefaultByName(1, $p[1], $false)) }
+    Write-Output ("physical=" + [LTAudio.Cfg]::FindPhysicalPreferred(0))
+  }
+  "stopduplex" {
+    $p = $Name -split '\|', 2
+    $r = ""
+    if ($p[0]) { $r = [LTAudio.Cfg]::SetDefaultByName(0, $p[0], $false) }
+    if (-not $r) { $r = [LTAudio.Cfg]::SetDefaultPhysicalPreferred(0) }
+    Write-Output ("render=" + $r)
+    $c = ""
+    if ($p.Count -gt 1 -and $p[1]) { $c = [LTAudio.Cfg]::SetDefaultByName(1, $p[1], $false) }
+    if (-not $c) { $c = [LTAudio.Cfg]::SetDefaultByName(1, "", $true) }
+    Write-Output ("capture=" + $c)
+  }
   default { "UNKNOWN_ACTION" }
 }
