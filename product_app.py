@@ -172,7 +172,7 @@ from system_audio import (
 
 
 APP_NAME = "Live Translator"
-APP_VERSION = "0.9.52"
+APP_VERSION = "0.9.53"
 KEYRING_SERVICE = "local.live-translator"
 KEYRING_ACCOUNT = "edcom-api-key"
 KEYRING_LICENSE_ACCOUNT = "license-key"
@@ -2765,6 +2765,15 @@ class TranslatorWindow(QWidget):
             return
         if line.startswith("[Ulanish uzildi]"):
             self.last_engine_error = line.strip("[] ")
+            # SABABNI EKRANDA ko'rsatamiz. Ilgari xato faqat log faylga
+            # yozilardi va foydalanuvchi "Gemini kutilmoqda / qayta ulanmoqda"
+            # dan boshqa hech narsa ko'rmasdi — boshqa kompyuterda log
+            # olmasdan sababni bilishning iloji yo'q edi.
+            reason, is_normal = self._explain_connection_error(line)
+            if not is_normal:
+                self._set_status("ULANISH XATOSI", "#ef4444")
+                self.route_hint.setText(reason)
+                self.route_hint.setVisible(True)
             return
         if " › " not in line:
             return
@@ -2990,6 +2999,52 @@ class TranslatorWindow(QWidget):
         # Aniqlab bo'lmadi — XAVFSIZ tomonni tanlaymiz: karnay deb hisoblab
         # himoyani yoqamiz (echo halqasi eng yomon nosozlik edi).
         return False
+
+    @staticmethod
+    def _explain_connection_error(raw: str) -> tuple[str, bool]:
+        """Dvigatel xatosini ODDIY tilda tushuntiradi.
+
+        Qaytaradi: (tushuntirish, normal_holatmi). "normal" — Gemini
+        sessiyasining muddati tugab, ilova o'zi qayta ulanayotgan holat:
+        bu nosozlik emas, foydalanuvchini qo'rqitmaymiz."""
+        text = (raw or "").lower()
+        if "goaway" in text or "session dur" in text:
+            return ("", True)  # sessiya muddati — ilova o'zi qayta ulanadi
+        if "certificate" in text or "ssl" in text or "certif" in text:
+            return (
+                "🔒 Sertifikat xatosi: kompaniya tarmog‘i internet trafigini "
+                "tekshiryapti. IT bo‘limidan «generativelanguage.googleapis.com» "
+                "ga ruxsat so‘rang (yoki kompaniya sertifikatini Windows’ga "
+                "o‘rnatishlarini ayting).",
+                False,
+            )
+        if any(
+            marker in text
+            for marker in ("getaddrinfo", "name or service", "nodename", "dns")
+        ):
+            return ("🌐 Internet yo‘q yoki DNS ishlamayapti.", False)
+        if any(
+            marker in text
+            for marker in ("timed out", "timeout", "1006", "refused", "unreachable")
+        ):
+            return (
+                "🚧 Tarmoq to‘sig‘i (firewall/proxy): Gemini serveriga yetib "
+                "bo‘lmadi. IT bo‘limidan «generativelanguage.googleapis.com» "
+                "(443-port, WebSocket) ga ruxsat so‘rang.",
+                False,
+            )
+        if any(
+            marker in text
+            for marker in ("api key", "api_key", "permission_denied", "401", "403", "unauthenticated")
+        ):
+            return ("🔑 API kalit noto‘g‘ri yoki ruxsat berilmagan.", False)
+        if any(
+            marker in text
+            for marker in ("resource_exhausted", "quota", "429", "rate limit")
+        ):
+            return ("📉 Gemini kvotasi tugagan yoki so‘rovlar chegarasi.", False)
+        short = (raw or "").strip()
+        return (f"⚠️ Ulanish xatosi: {short[:160]}", False)
 
     def _output_device_picked(self, _index: int) -> None:
         """Foydalanuvchi tarjima ovozi chiqadigan qurilmani O'ZI tanladi.
