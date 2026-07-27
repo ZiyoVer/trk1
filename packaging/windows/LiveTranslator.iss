@@ -1,5 +1,5 @@
 #define MyAppName "Live Translator"
-#define MyAppVersion "0.9.45"
+#define MyAppVersion "0.9.46"
 #define MyAppPublisher "Live Translator"
 #define MyAppExeName "Live Translator.exe"
 
@@ -42,3 +42,53 @@ Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription:
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent
+
+[Code]
+{ TOZA YANGILASH: yangi versiyani o'rnatishdan OLDIN ishlab turgan dasturni
+  yopamiz va eski versiyani butunlay o'chiramiz.
+
+  Sabab (2026-07-27 jonli nosozlik): dastur ochiq turganda fayl qulflanib,
+  o'rnatuvchi "DeleteFile failed; code 5" bilan yiqilardi va o'rnatish
+  YARIM QOLIB, ilova umuman ishlamay qolardi (papkada faqat unins*.exe).
+  Restart Manager (CloseApplications=force) boshqa sessiyadagi jarayonni
+  yopa olmaydi — shuning uchun taskkill + jim uninstall qo'shildi.
+
+  Foydalanuvchi ma'lumotlariga TEGILMAYDI: sozlamalar/loglar
+  %LOCALAPPDATA%\Live Translator ichida, API kalit esa Windows Credential
+  Manager'da — uninstaller faqat o'zi o'rnatgan fayllarni o'chiradi. }
+
+function GetUninstallString(): String;
+var
+  Key: String;
+  Value: String;
+begin
+  { Per-user o'rnatish (PrivilegesRequired=lowest) -> odatda HKCU }
+  Key := 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{A1A35FA3-89DA-4D3C-A593-A2719144A515}_is1';
+  Value := '';
+  if not RegQueryStringValue(HKCU, Key, 'UninstallString', Value) then
+    RegQueryStringValue(HKLM, Key, 'UninstallString', Value);
+  Result := Value;
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  UninstallCmd: String;
+  ResultCode: Integer;
+begin
+  Result := '';
+
+  { 1) Ishlab turgan dasturni (va dvigatel bolasini) majburan yopamiz }
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/IM "Live Translator.exe" /T /F',
+       '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Sleep(1200);
+
+  { 2) Eski versiyani jim o'chiramiz (bo'lsa). Xato bo'lsa ham davom etamiz:
+       o'chirilmasa ham o'rnatish odatdagidek ustiga yozadi. }
+  UninstallCmd := RemoveQuotes(GetUninstallString());
+  if UninstallCmd <> '' then
+  begin
+    Exec(UninstallCmd, '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART',
+         '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    Sleep(1500);
+  end;
+end;
