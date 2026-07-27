@@ -398,8 +398,11 @@ class Translator:
         # uchun model o'z tilidagi nutqqa javob bermaydi.
 
     def _log(self, message: str) -> None:
+        # VAQT TAMG'ASI: logda vaqt bo'lmagani uchun "ovoz qachon to'xtadi",
+        # "qancha jimlik bo'ldi" kabi savollarga javob topib bo'lmasdi
+        # (jonli nosozlik tahlili, 2026-07-27).
         prefix = f"[{self.channel}] " if self.channel else ""
-        print(f"{prefix}{message}")
+        print(f"{time.strftime('%H:%M:%S')} {prefix}{message}")
 
     def _from_audio_thread(self, data: bytes) -> None:
         self.loop.call_soon_threadsafe(self._enqueue_audio, data)

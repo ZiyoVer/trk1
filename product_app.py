@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import platform
+import re
 import plistlib
 import shutil
 import ssl
@@ -172,7 +173,7 @@ from system_audio import (
 
 
 APP_NAME = "Live Translator"
-APP_VERSION = "0.9.55"
+APP_VERSION = "0.9.56"
 KEYRING_SERVICE = "local.live-translator"
 KEYRING_ACCOUNT = "edcom-api-key"
 KEYRING_LICENSE_ACCOUNT = "license-key"
@@ -2735,7 +2736,12 @@ class TranslatorWindow(QWidget):
             line, self.output_buffer = self.output_buffer.split("\n", 1)
             self._handle_line(line.strip())
 
+    _ENGINE_TIMESTAMP = re.compile(r"^\d{2}:\d{2}:\d{2}\s+")
+
     def _handle_line(self, line: str) -> None:
+        # Dvigatel satrlari endi vaqt bilan boshlanadi ("12:34:56 [INCOMING] …").
+        # Qolgan tahlil eski formatga tayanadi — vaqtni kesib tashlaymiz.
+        line = self._ENGINE_TIMESTAMP.sub("", line, count=1)
         channel = ""
         if line.startswith("[") and "] " in line:
             candidate, remainder = line[1:].split("] ", 1)
