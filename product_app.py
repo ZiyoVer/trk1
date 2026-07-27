@@ -172,7 +172,7 @@ from system_audio import (
 
 
 APP_NAME = "Live Translator"
-APP_VERSION = "0.9.53"
+APP_VERSION = "0.9.54"
 KEYRING_SERVICE = "local.live-translator"
 KEYRING_ACCOUNT = "edcom-api-key"
 KEYRING_LICENSE_ACCOUNT = "license-key"
@@ -3038,6 +3038,19 @@ class TranslatorWindow(QWidget):
             for marker in ("api key", "api_key", "permission_denied", "401", "403", "unauthenticated")
         ):
             return ("🔑 API kalit noto‘g‘ri yoki ruxsat berilmagan.", False)
+        if any(
+            marker in text
+            for marker in (
+                "credits are depleted", "prepayment", "billing", "1011",
+                "payment", "insufficient funds",
+            )
+        ):
+            return (
+                "💳 Gemini hisobidagi PUL (kredit) tugagan. ai.studio/projects "
+                "ga kirib hisobni to‘ldiring — shundan keyin tarjima darhol "
+                "ishlaydi (dasturni qayta o‘rnatish shart emas).",
+                False,
+            )
         if any(
             marker in text
             for marker in ("resource_exhausted", "quota", "429", "rate limit")
