@@ -157,3 +157,24 @@ LT_SPEAKER_MODE=ptt muhit o'zgaruvchisi bilan ilovani ishga tushirish
 3. Gemini session_resumption (uzoq meetingda 1008 uzilishlarini silliqlash).
 4. GitLab saytini 0.9.4x ga yangilash (500 muammosi: LFS yoki kichik push).
 5. Ishlayotganda naushnik ulanganda avto-almashish (hozir Stop→Start kerak).
+
+## Yangi kompyuterga o'rnatishda MAJBURIY qadam (2026-07-27)
+
+Ilova tarjimani virtual kabelga yozadi va tizim mikrofonini o'sha kabelga
+qo'yadi. Lekin **Meet/Zoom ko'pincha o'zi tanlagan mikrofonda qolib ketadi**
+(masalan webcam) — u holda suhbatdosh NA tarjimani, na xom ovozni eshitadi.
+
+**Yechim:** Meet/Zoom sozlamalarida mikrofon =
+`CABLE Output (VB-Audio Virtual Cable)` (yoki «Same as System»).
+
+Ilova v0.9.52 dan boshlab kerakli nomni ekranda o'zi ko'rsatadi
+(`meet_mic_hint`, manba: `audio_config.ps1 setcapture` qaytargan aniq nom).
+Jonli tasdiq (Windows 11, boshliq kompyuteri): mikrofon CABLE Output ga
+o'zgartirilgach eshitish ham, gapirish ham ishladi.
+
+Tashxis tartibi (suhbatdosh eshitmasa):
+1. Ilova ekranidagi «Meet/Zoom mikrofoni: ...» yozuvini o'qing va Meet'da
+   AYNAN o'shani tanlang.
+2. Windows → Звук → Запись → CABLE Output daraja ko'rsatkichi gapirganda
+   harakatlanadimi (harakatlansa — kabel ishlayapti, muammo Meet tomonda).
+3. Drayver yangi o'rnatilgan bo'lsa — kompyuterni qayta yoqing.
