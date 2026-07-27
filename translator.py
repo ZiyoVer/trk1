@@ -365,6 +365,10 @@ class Translator:
         self.started_at = 0.0
         self.input_bytes = 0
         self.output_bytes = 0
+        # Chiqish oqimi nazoratchisi uchun (_check_playback_alive).
+        self._last_seen_output_bytes = 0
+        self._last_audio_recv_at = 0.0
+        self._last_reopen_at = 0.0
         # Gemini transkriptni OQIM bilan yuboradi: bir gap bir necha marta,
         # to'ldirilib qayta keladi. Har bo'lakni alohida qator qilib chiqarsak
         # dialog oynasida "brother, brother, brother" kabi TAKROR ko'rinadi
@@ -617,6 +621,7 @@ class Translator:
         while not self.stop_event.is_set():
             await asyncio.sleep(self.DEVICE_POLL_SECONDS)
             try:
+                await self._check_playback_alive()
                 await self._maybe_switch_output(listening_cable, follow_main)
             except asyncio.CancelledError:
                 raise
@@ -624,6 +629,45 @@ class Translator:
                 # Qurilma almashtirish — qulaylik, majburiyat emas: hech
                 # qanday xato tarjimani to'xtatmasligi kerak.
                 self._log(f"Qurilma kuzatuvchisi xatosi (e'tiborsiz): {error}")
+
+    # Tarjima audiosi KELAYOTGAN bo'lsa-yu, karnayga shuncha vaqt CHIQMASA —
+    # chiqish oqimi qotib qolgan deb hisoblaymiz.
+    PLAYBACK_STALL_SECONDS = 6.0
+    REOPEN_COOLDOWN_SECONDS = 30.0
+
+    async def _check_playback_alive(self) -> None:
+        """Ovoz "o'z-o'zidan" yo'qolib qolishiga qarshi nazoratchi.
+
+        Real nosozlik: bir muddat yaxshi ishlagach ovoz butunlay eshitilmay
+        qoladi, ilova esa xato ko'rsatmaydi (tarjima matnlari kelaveradi).
+        Sababi — chiqish oqimi (WASAPI) jimgina o'lib qoladi: qurilma uxlab
+        qoladi/uziladi, Windows qurilmani almashtiradi va h.k. Bunda audio
+        callback endi hech narsa chiqarmaydi, lekin hech qanday xato
+        bo'lmaydi. Shu holatni aniqlab, oqimni QAYTA OCHAMIZ.
+        """
+        player = self.player
+        if player is None:
+            return
+        now = time.monotonic()
+        if self.output_bytes != self._last_seen_output_bytes:
+            self._last_seen_output_bytes = self.output_bytes
+            self._last_audio_recv_at = now
+        recv = self._last_audio_recv_at
+        if not recv or now - recv > 30.0:
+            return  # yaqinda tarjima audiosi kelmagan — jimlik normal
+        played = player.last_active_output
+        healthy = played > 0.0 and (recv - played) <= self.PLAYBACK_STALL_SECONDS
+        if healthy:
+            return
+        if now - self._last_reopen_at < self.REOPEN_COOLDOWN_SECONDS:
+            return  # yaqinda qayta ochdik — takror urinmaymiz
+        self._last_reopen_at = now
+        self._log(
+            "Ovoz karnayga chiqmayapti (chiqish qurilmasi qotdi) — "
+            "audio oqimi qayta ochilmoqda…"
+        )
+        await self._reopen_audio(self.output_device.name)
+        self._log("Audio oqimi qayta ochildi.")
 
     def _requested_output_name(self) -> str:
         """GUI yozib qo'ygan chiqish qurilmasi nomi (Windows yo'li).
