@@ -62,7 +62,7 @@ if (-not (Test-Path $Iscc)) {
 & $Iscc packaging\windows\LiveTranslator.iss
 if ($LASTEXITCODE -ne 0) { throw "Inno Setup kompilyatsiyasi muvaffaqiyatsiz (exit $LASTEXITCODE)" }
 
-$Installer = Join-Path $Root "installer\windows\LiveTranslator-Setup-0.9.48.exe"
+$Installer = Join-Path $Root "installer\windows\LiveTranslator-Setup-0.9.49.exe"
 if (-not (Test-Path $Installer)) { throw "Installer yaratilmadi: $Installer" }
 if ($SignTool) {
     & $SignTool sign /sha1 $env:WINDOWS_SIGN_CERT_SHA1 /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 $Installer

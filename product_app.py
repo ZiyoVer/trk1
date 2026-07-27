@@ -172,7 +172,7 @@ from system_audio import (
 
 
 APP_NAME = "Live Translator"
-APP_VERSION = "0.9.48"
+APP_VERSION = "0.9.49"
 KEYRING_SERVICE = "local.live-translator"
 KEYRING_ACCOUNT = "edcom-api-key"
 KEYRING_LICENSE_ACCOUNT = "license-key"
@@ -424,6 +424,11 @@ class TranslatorWindow(QWidget):
             "OUTGOING": {"source": "", "target": ""},
         }
         self.settings = QSettings("Charon", APP_NAME)
+        # Tarjima ovozi qaysi qurilmadan eshitilishi — foydalanuvchi tanlovi
+        # (saqlanadi). Bo'sh bo'lsa avtomatik tanlanadi.
+        self.preferred_output_name = str(
+            self.settings.value("preferred_output", "") or ""
+        )
         # Interfeys tili: saqlangan tanlov yoki OT tili (uz/ru/en).
         ui_i18n.set_language(
             ui_i18n.initial_language(
@@ -699,17 +704,26 @@ class TranslatorWindow(QWidget):
         self.input_device.setVisible(False)
 
         output_row = QHBoxLayout()
-        output_label = QLabel("CHIQISH")
+        # KO'RINADI (v0.9.49): kompyuterda bir nechta chiqish bo'lsa (Realtek
+        # karnay + monitor audio + naushnik), ilova qaysi birini ODAM
+        # eshitayotganini bila olmaydi — tizim default'i noto'g'ri bo'lishi
+        # mumkin (real holat: default Realtek edi, foydalanuvchi esa monitor
+        # orqali eshitardi -> tarjima ovozi "yo'qolgan"dek tuyulardi).
+        output_label = QLabel("ESHITAMAN")
         output_label.setFixedWidth(76)
         output_label.setStyleSheet("color: #a9b8cc; font-size: 10px; font-weight: 700;")
         self.output_device = QComboBox()
-        self.output_device.setToolTip("Tarjima qilingan ovoz qayerga uzatiladi")
+        self.output_device.setToolTip(
+            "Tarjima ovozi shu qurilmadan eshitiladi (karnay/naushnik/monitor)"
+        )
         self.output_device.currentIndexChanged.connect(self._audio_route_changed)
+        # activated — FAQAT foydalanuvchi o'zi tanlaganda chiqadi (dastur
+        # ro'yxatni yangilaganda emas), shuning uchun aynan shu bilan
+        # "foydalanuvchi tanlovi" belgilanadi.
+        self.output_device.activated.connect(self._output_device_picked)
         output_row.addWidget(output_label)
         output_row.addWidget(self.output_device, 1)
         layout.addLayout(output_row)
-        output_label.setVisible(False)
-        self.output_device.setVisible(False)
 
         self.duplex_outgoing_audio_panel = QFrame()
         duplex_audio_layout = QVBoxLayout(self.duplex_outgoing_audio_panel)
@@ -2299,7 +2313,18 @@ class TranslatorWindow(QWidget):
                     # 3) Zaxira: findoutput (default kabel bo'lib qolgan hol).
                     headphone = self._connected_headphone_name()
                     prev = getattr(self, "win_prev_render", "")
-                    if headphone:
+                    chosen_by_user = getattr(self, "preferred_output_name", "")
+                    if chosen_by_user and not is_virtual_device(chosen_by_user):
+                        # Foydalanuvchi «ESHITAMAN» ro'yxatidan o'zi tanlagan —
+                        # avtomatik tanlovdan USTUN. Kompyuterda bir nechta
+                        # chiqish bo'lganda (Realtek karnay + monitor audio)
+                        # tizim default'i noto'g'ri bo'lishi mumkin edi.
+                        incoming_output_arg = chosen_by_user
+                        print(
+                            f"[ROUTING] foydalanuvchi tanlagan chiqish: {chosen_by_user!r}",
+                            flush=True,
+                        )
+                    elif headphone:
                         incoming_output_arg = headphone
                         print(f"[ROUTING] naushnik tanlandi: {headphone!r}", flush=True)
                     elif prev and not is_virtual_device(prev):
@@ -2919,6 +2944,19 @@ class TranslatorWindow(QWidget):
         # Aniqlab bo'lmadi — XAVFSIZ tomonni tanlaymiz: karnay deb hisoblab
         # himoyani yoqamiz (echo halqasi eng yomon nosozlik edi).
         return False
+
+    def _output_device_picked(self, _index: int) -> None:
+        """Foydalanuvchi tarjima ovozi chiqadigan qurilmani O'ZI tanladi.
+
+        Shundan keyin avtomatik tanlov (tizim default'i / naushnik) BEKOR
+        qilinadi — odam qayerdan eshitayotganini faqat o'zi biladi. Tanlov
+        keyingi ochilishlarga ham saqlanadi."""
+        name = self._device_name(self.output_device)
+        if not name or is_virtual_device(name):
+            return  # virtual kabel tanlansa — avtomatik rejim qoladi
+        self.preferred_output_name = name
+        self.settings.setValue("preferred_output", name)
+        print(f"[ROUTING] foydalanuvchi chiqishni tanladi: {name!r}", flush=True)
 
     def _connected_headphone_name(self) -> str:
         """ULANGAN naushnik/garnitura nomi (Windows), bo'lmasa "".
