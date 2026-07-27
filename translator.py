@@ -344,6 +344,13 @@ class Translator:
         self.started_at = 0.0
         self.input_bytes = 0
         self.output_bytes = 0
+        # Gemini transkriptni OQIM bilan yuboradi: bir gap bir necha marta,
+        # to'ldirilib qayta keladi. Har bo'lakni alohida qator qilib chiqarsak
+        # dialog oynasida "brother, brother, brother" kabi TAKROR ko'rinadi
+        # (ovoz takrorlanmaydi — faqat matn). Ketma-ket bir xil matnni
+        # ko'rsatmaymiz.
+        self._last_input_text = ""
+        self._last_output_text = ""
         self.source_language = args.source_language.upper()
         # Duplex'da tashqaridan o'rnatiladi (async_main): gapirish kanali
         # uchun eshitish kanalining player'iga bog'langan feedback-gate.
@@ -515,11 +522,13 @@ class Translator:
                 text = (transcription.text or "").strip()
                 if transcription.language_code:
                     self.source_language = transcription.language_code.upper()
-                if text:
+                if text and text != self._last_input_text:
+                    self._last_input_text = text
                     self._log(f"{self.source_language} › {text}")
             if not self.args.no_transcript and content.output_transcription:
                 text = (content.output_transcription.text or "").strip()
-                if text:
+                if text and text != self._last_output_text:
+                    self._last_output_text = text
                     self._log(f"{self.args.target_language.upper()} › {text}")
             if content.model_turn:
                 for part in content.model_turn.parts:

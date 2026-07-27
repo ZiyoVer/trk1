@@ -171,7 +171,7 @@ from system_audio import (
 
 
 APP_NAME = "Live Translator"
-APP_VERSION = "0.9.43"
+APP_VERSION = "0.9.44"
 KEYRING_SERVICE = "local.live-translator"
 KEYRING_ACCOUNT = "edcom-api-key"
 KEYRING_LICENSE_ACCOUNT = "license-key"
@@ -2229,8 +2229,19 @@ class TranslatorWindow(QWidget):
                     # findoutput faqat ZAXIRA: default virtual kabel bo'lib
                     # qolган bo'lsa (oldingi sessiya tiklamagan) ACTIVE
                     # naushnik/fizik qurilmani tanlaydi.
+                    # 1) ULANGAN naushnik bo'lsa — DOIM o'shanga (foydalanuvchi
+                    #    naushnikni tizim default qilmagan bo'lsa ham: Bluetooth
+                    #    naushnik ulanganda tizim default'i ko'pincha karnayda
+                    #    qolib, tarjima quloqqa bormasdi).
+                    # 2) Aks holda foydalanuvchi eshitayotgan qurilma
+                    #    (win_prev_render) — routing'dan oldingi tizim default'i.
+                    # 3) Zaxira: findoutput (default kabel bo'lib qolgan hol).
+                    headphone = self._connected_headphone_name()
                     prev = getattr(self, "win_prev_render", "")
-                    if prev and not is_virtual_device(prev):
+                    if headphone:
+                        incoming_output_arg = headphone
+                        print(f"[ROUTING] naushnik tanlandi: {headphone!r}", flush=True)
+                    elif prev and not is_virtual_device(prev):
                         incoming_output_arg = prev
                     else:
                         chosen = ""
@@ -2848,8 +2859,35 @@ class TranslatorWindow(QWidget):
         # himoyani yoqamiz (echo halqasi eng yomon nosozlik edi).
         return False
 
+    def _connected_headphone_name(self) -> str:
+        """ULANGAN naushnik/garnitura nomi (Windows), bo'lmasa "".
+
+        Foydalanuvchi talabi: «naushnik ulangan bo'lsa naushnikka bersin,
+        bo'lmasa Realtek karnayga». Windows faqat ULANGAN qurilmani ACTIVE
+        deb belgilaydi (bo'sh quloqchin uyasi ACTIVE emas), FormFactor esa
+        uning naushnik ekanini aytadi — shuning uchun bu belgi ishonchli.
+        Bluetooth naushnik ham shu yo'l bilan topiladi."""
+        if platform.system() != "Windows":
+            return ""
+        try:
+            from winaec import active_endpoints, FF_EAR_SAFE
+
+            for name, form_factor in active_endpoints(0):
+                if not name or is_virtual_device(name):
+                    continue
+                if form_factor in FF_EAR_SAFE or self._is_headphone_output(name):
+                    return name
+        except Exception as error:
+            print(f"[ROUTING] naushnik qidiruvi xato: {error}", flush=True)
+        return ""
+
     def _physical_output_name(self) -> str:
         """Nazorat ovozi uchun virtual bo'lmagan chiqish (tizim tanlovi afzal)."""
+        # ULANGAN naushnik doim ustun: tarjima quloqqa borishi kerak (aks
+        # holda tizim default'i karnayda qolib, naushnikda jimlik bo'lardi).
+        headphone = self._connected_headphone_name()
+        if headphone:
+            return headphone
         devices = [
             device
             for device in available_devices("output")
