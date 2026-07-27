@@ -172,7 +172,7 @@ from system_audio import (
 
 
 APP_NAME = "Live Translator"
-APP_VERSION = "0.9.49"
+APP_VERSION = "0.9.50"
 KEYRING_SERVICE = "local.live-translator"
 KEYRING_ACCOUNT = "edcom-api-key"
 KEYRING_LICENSE_ACCOUNT = "license-key"
@@ -1900,8 +1900,25 @@ class TranslatorWindow(QWidget):
         if platform.system() != "Windows":
             return
         prev_capture = getattr(self, "win_prev_capture", "")
-        # Karnay/naushnik — naushnik-afzal fizik chiqish.
-        self._win_audio("restorerender")
+        # Karnay/naushnik. TARTIB:
+        #   1) Foydalanuvchi «ESHITAMAN» ro'yxatidan tanlagan qurilma — u
+        #      AYNAN o'zi eshitadigan joy (bir nechta chiqishi bor
+        #      kompyuterda avtomatik tanlov boshqa qurilmani olib, Stop'dan
+        #      keyin ovoz umuman eshitilmay qolardi).
+        #   2) Start'dan oldingi tizim default'i.
+        #   3) Avtomatik: naushnik-afzal fizik chiqish.
+        restored = False
+        for candidate in (
+            getattr(self, "preferred_output_name", ""),
+            getattr(self, "win_prev_render", ""),
+        ):
+            if not candidate or is_virtual_device(candidate):
+                continue
+            if self._win_audio("setrender", candidate).startswith("OK"):
+                restored = True
+                break
+        if not restored:
+            self._win_audio("restorerender")
         # Mikrofon — Start'dan oldingi fizik default, aks holda birinchi fizik.
         if prev_capture and not is_virtual_device(prev_capture):
             self._win_audio("setcapture", prev_capture)
