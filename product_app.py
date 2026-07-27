@@ -171,7 +171,7 @@ from system_audio import (
 
 
 APP_NAME = "Live Translator"
-APP_VERSION = "0.9.44"
+APP_VERSION = "0.9.45"
 KEYRING_SERVICE = "local.live-translator"
 KEYRING_ACCOUNT = "edcom-api-key"
 KEYRING_LICENSE_ACCOUNT = "license-key"
@@ -918,23 +918,25 @@ class TranslatorWindow(QWidget):
         self.tray_status_action = menu.addAction(t("Tayyor"))
         self.tray_status_action.setEnabled(False)
         menu.addSeparator()
-        # Oynani qaytarish — eng tepada: ilova LSUIElement (Dock'da
-        # ko'rinmaydi), shuning uchun yashirilgan oynani faqat shu yerdan
-        # yoki tray belgisini bosib qaytarish mumkin.
-        top_show_action = menu.addAction(t("Oynani ko‘rsatish"))
-        top_show_action.triggered.connect(self._show_window)
-        menu.addSeparator()
         # Ilova faqat ikki tomonlama — tray'dan rejim va eski til menyulari
         # olib tashlandi (til asosiy oynadagi sodda panelda). Mavjud kod bilan
         # mos bo'lishi uchun ro'yxatlar bo'sh qoldiriladi.
         self.tray_mode_actions: list[QAction] = []
         self.tray_source_actions: list[QAction] = []
         self.tray_target_actions: list[QAction] = []
-        menu.addSeparator()
+        # ASOSIY boshqaruv eng tepada: tray belgisidan boshlash/to'xtatish.
         self.tray_start_action = menu.addAction(t("Tarjimani boshlash"))
         self.tray_start_action.triggered.connect(self.start_translator)
         self.tray_stop_action = menu.addAction(t("Tarjimani to‘xtatish"))
         self.tray_stop_action.triggered.connect(self.stop_translator)
+        menu.addSeparator()
+        # "Oynani ko'rsatish" O'RTADA turadi. Ilgari u eng tepadagi BOSILADIGAN
+        # band edi: o'ng tugma bosilganda menyu kursor tagida ochilib, sichqoncha
+        # qo'yib yuborilishi o'sha bandni bosib yuborardi — oyna "o'z-o'zidan"
+        # ochilardi (foydalanuvchi shikoyati). Menyuning yuqori va quyi chekkasi
+        # endi BOSILMAYDIGAN bandlar (holat va versiya) bilan himoyalangan.
+        top_show_action = menu.addAction(t("Oynani ko‘rsatish"))
+        top_show_action.triggered.connect(self._show_window)
         menu.addSeparator()
         # Sodda tray (foydalanuvchi talabi): monitor ("o‘zim ham eshitay"),
         # log yig‘ish (ZIP), mikrofon/karnay tiklash — olib tashlandi.
@@ -959,6 +961,12 @@ class TranslatorWindow(QWidget):
         settings_action.triggered.connect(self._tray_open_settings)
         quit_action = menu.addAction(t("Chiqish"))
         quit_action.triggered.connect(self._quit_from_tray)
+        # Quyi chekka himoyasi: menyu YUQORIGA ochilganda (tepshoq pastda
+        # bo'lsa — odatiy hol) kursor oxirgi band ustida qoladi. Bosilmaydigan
+        # versiya yozuvi tasodifan "Chiqish"ni bosib yuborishning oldini oladi.
+        menu.addSeparator()
+        tray_version_action = menu.addAction(f"{APP_NAME} {APP_VERSION}")
+        tray_version_action.setEnabled(False)
         self.tray_menu = menu
         self.tray.setContextMenu(menu)
         self.tray.activated.connect(self._tray_activated)
