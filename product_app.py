@@ -173,7 +173,7 @@ from system_audio import (
 
 
 APP_NAME = "Live Translator"
-APP_VERSION = "0.9.60"
+APP_VERSION = "0.9.61"
 
 # Yordam serveri (Railway): loglarni yuborish va yangilanishni tekshirish.
 # Yuklash tokeni ilova ichida bo'lishi SHART (foydalanuvchi bilmaydi) —
@@ -224,6 +224,84 @@ def is_expected_engine_exit(exit_code: int, stop_requested: bool) -> bool:
     """A user-requested process exit is a normal Stop, not a crash."""
 
     return stop_requested or exit_code == 0
+
+
+class OutputPickerDialog(QDialog):
+    """«Tarjima ovozini qayerdan eshitasiz?» — birinchi ishga tushirishda.
+
+    NEGA KERAK: ilova tarjimani Windows'ning ASOSIY qurilmasiga chiqaradi,
+    lekin odam ko'pincha boshqasidan eshitadi (masalan monitor karnayi
+    "PC Monitor (Аудио Intel для дисплеев)", tizim default'i esa Realtek).
+    Natijada tarjima matni ko'rinadi, ovozi eshitilmaydi — bir necha
+    kompyuterda aynan shu takrorlandi. Dastur odam qayerdan eshitayotganini
+    BILA OLMAYDI, shuning uchun BIR MARTA so'raydi va javobni saqlaydi.
+    """
+
+    def __init__(self, devices: list, current: str = "", parent=None) -> None:  # noqa: ANN001
+        super().__init__(parent)
+        self.setWindowTitle(t("Ovoz qurilmasi"))
+        self.setMinimumWidth(460)
+        self.chosen = ""
+        layout = QVBoxLayout(self)
+        title = QLabel(t("Tarjima ovozini qaysi qurilmadan eshitasiz?"))
+        title.setStyleSheet("font-size: 14px; font-weight: 700;")
+        layout.addWidget(title)
+        hint = QLabel(
+            t(
+                "Ro‘yxatdan tanlang va «▶ Sinov» bosing. Ovoz eshitilsa — "
+                "qurilma to‘g‘ri. Bu bir martalik sozlama."
+            )
+        )
+        hint.setWordWrap(True)
+        hint.setStyleSheet("color: #94a3b8; font-size: 12px;")
+        layout.addWidget(hint)
+        self.combo = QComboBox()
+        for device in devices:
+            self.combo.addItem(device.name, device.index)
+            self.combo.setItemData(
+                self.combo.count() - 1, device.name, Qt.ItemDataRole.UserRole + 1
+            )
+        if current:
+            position = self.combo.findText(current)
+            if position >= 0:
+                self.combo.setCurrentIndex(position)
+        layout.addWidget(self.combo)
+        row = QHBoxLayout()
+        self.test_button = QPushButton("▶ " + t("Sinov"))
+        self.test_button.clicked.connect(self._test)
+        row.addWidget(self.test_button)
+        self.result = QLabel("")
+        self.result.setStyleSheet("color: #7dd3fc; font-size: 12px;")
+        row.addWidget(self.result, 1)
+        layout.addLayout(row)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self._accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def _test(self) -> None:
+        index = self.combo.currentData()
+        if index is None:
+            return
+        try:
+            import numpy as np
+            import sounddevice as sd
+
+            rate = 48_000
+            t_axis = np.arange(int(rate * 0.6), dtype=np.float32) / rate
+            tone = 0.25 * np.sin(2 * np.pi * 523.25 * t_axis)
+            half = len(t_axis) // 2
+            tone[half:] = 0.25 * np.sin(2 * np.pi * 659.25 * t_axis[: len(t_axis) - half])
+            sd.play(tone, samplerate=rate, device=int(index), blocking=False)
+            self.result.setText(t("Ovoz yuborildi — eshitildimi?"))
+        except Exception as error:
+            self.result.setText(f"{error}")
+
+    def _accept(self) -> None:
+        self.chosen = str(self.combo.currentText())
+        self.accept()
 
 
 class DriverSignals(QObject):
@@ -502,6 +580,8 @@ class TranslatorWindow(QWidget):
         self._refresh_driver_state()
         QTimer.singleShot(250, self._first_run)
         QTimer.singleShot(4000, self._check_for_update)
+        # Ovoz qurilmasini BIR MARTA so'raymiz (saqlanmagan bo'lsa).
+        QTimer.singleShot(1500, self.ask_output_device)
         self.driver_timer = QTimer(self)
         self.driver_timer.timeout.connect(self._refresh_driver_state)
         self.driver_timer.start(4000)
@@ -1015,6 +1095,8 @@ class TranslatorWindow(QWidget):
         open_logs_action.triggered.connect(self._open_logs_folder)
         send_logs_action = menu.addAction(t("Loglarni yuborish (yordam uchun)"))
         send_logs_action.triggered.connect(self.send_logs_to_support)
+        pick_output_action = menu.addAction(t("Ovoz qurilmasini tanlash…"))
+        pick_output_action.triggered.connect(lambda: self.ask_output_device(True))
         menu.addSeparator()
         # Interfeys tili — avtomatik aniqlanadi, shu yerdan o'zgartiriladi.
         self.tray_ui_lang_menu = menu.addMenu(t("Interfeys tili"))
@@ -3405,6 +3487,37 @@ class TranslatorWindow(QWidget):
             return ("📉 Gemini kvotasi tugagan yoki so‘rovlar chegarasi.", False)
         short = (raw or "").strip()
         return (f"⚠️ Ulanish xatosi: {short[:160]}", False)
+
+    def ask_output_device(self, forced: bool = False) -> None:
+        """Ovoz qurilmasini BIR MARTA so'raydi (yoki menyudan chaqiriladi)."""
+        if platform.system() == "Darwin" and not forced:
+            return
+        if not forced and str(self.settings.value("preferred_output", "") or ""):
+            return  # allaqachon tanlangan
+        try:
+            devices = [
+                device
+                for device in available_devices("output")
+                if not is_virtual_device(device.name)
+            ]
+        except Exception:
+            return
+        if len(devices) < 2 and not forced:
+            return  # tanlashga narsa yo'q — bitta chiqish bor
+        dialog = OutputPickerDialog(
+            devices, str(getattr(self, "preferred_output_name", "")), self
+        )
+        if dialog.exec() != QDialog.DialogCode.Accepted or not dialog.chosen:
+            return
+        self.preferred_output_name = dialog.chosen
+        self.settings.setValue("preferred_output", dialog.chosen)
+        position = self.output_device.findText(dialog.chosen)
+        if position >= 0:
+            self.output_device.setCurrentIndex(position)
+        self.route_hint.setText(
+            f"🔈 Tarjima ovozi «{dialog.chosen}» qurilmasidan chiqadi."
+        )
+        self.route_hint.setVisible(True)
 
     def _play_output_test(self) -> None:
         """Tanlangan chiqishga qisqa sinov ovozi (0.6s) chiqaradi.
