@@ -722,8 +722,18 @@ class TranslatorWindow(QWidget):
         # ro'yxatni yangilaganda emas), shuning uchun aynan shu bilan
         # "foydalanuvchi tanlovi" belgilanadi.
         self.output_device.activated.connect(self._output_device_picked)
+        # SINOV OVOZI: "matn ko'rinadi, ovoz eshitilmaydi" nosozligining
+        # sababi deyarli doim NOTO'G'RI qurilma bo'lgan. Endi Start bosmasdan
+        # bir tugma bilan tekshiriladi: ovoz eshitilsa — qurilma to'g'ri.
+        self.output_test_button = QPushButton("▶ Sinov")
+        self.output_test_button.setFixedWidth(80)
+        self.output_test_button.setToolTip(
+            "Tanlangan qurilmaga qisqa sinov ovozi chiqaradi"
+        )
+        self.output_test_button.clicked.connect(self._play_output_test)
         output_row.addWidget(output_label)
         output_row.addWidget(self.output_device, 1)
+        output_row.addWidget(self.output_test_button)
         layout.addLayout(output_row)
 
         self.duplex_outgoing_audio_panel = QFrame()
@@ -3082,6 +3092,42 @@ class TranslatorWindow(QWidget):
             return ("📉 Gemini kvotasi tugagan yoki so‘rovlar chegarasi.", False)
         short = (raw or "").strip()
         return (f"⚠️ Ulanish xatosi: {short[:160]}", False)
+
+    def _play_output_test(self) -> None:
+        """Tanlangan chiqishga qisqa sinov ovozi (0.6s) chiqaradi.
+
+        Foydalanuvchi Start bosmasdan «shu qurilmadan eshitamanmi?» degan
+        savolga javob oladi — bir necha marta takrorlangan "tarjima matni
+        ko'rinadi, ovozi eshitilmaydi" nosozligining asosiy sababi shu edi."""
+        index = self.output_device.currentData()
+        name = self._device_name(self.output_device)
+        if index is None:
+            self.route_hint.setText("Avval chiqish qurilmasini tanlang.")
+            self.route_hint.setVisible(True)
+            return
+        try:
+            import numpy as np
+            import sounddevice as sd
+
+            rate = 48_000
+            t = np.arange(int(rate * 0.6), dtype=np.float32) / rate
+            # Ikki ohang (do–mi): karnay sinoviga xos, quloqqa yoqimli.
+            tone = 0.25 * np.sin(2 * np.pi * 523.25 * t)
+            tone[len(t) // 2 :] = 0.25 * np.sin(
+                2 * np.pi * 659.25 * t[: len(t) - len(t) // 2]
+            )
+            fade = np.linspace(0.0, 1.0, 400, dtype=np.float32)
+            tone[: len(fade)] *= fade
+            tone[-len(fade) :] *= fade[::-1]
+            sd.play(tone, samplerate=rate, device=int(index), blocking=False)
+            self.route_hint.setText(
+                f"🔈 Sinov ovozi «{name}» qurilmasiga yuborildi. Eshitilmasa — "
+                "ro‘yxatdan boshqa qurilmani tanlab, yana bosing."
+            )
+            self.route_hint.setVisible(True)
+        except Exception as error:
+            self.route_hint.setText(f"Sinov ovozi chiqmadi: {error}")
+            self.route_hint.setVisible(True)
 
     def _output_device_picked(self, _index: int) -> None:
         """Foydalanuvchi tarjima ovozi chiqadigan qurilmani O'ZI tanladi.
