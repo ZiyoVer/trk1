@@ -172,7 +172,7 @@ from system_audio import (
 
 
 APP_NAME = "Live Translator"
-APP_VERSION = "0.9.51"
+APP_VERSION = "0.9.52"
 KEYRING_SERVICE = "local.live-translator"
 KEYRING_ACCOUNT = "edcom-api-key"
 KEYRING_LICENSE_ACCOUNT = "license-key"
@@ -773,6 +773,16 @@ class TranslatorWindow(QWidget):
         )
         self.route_hint.setVisible(False)
         layout.addWidget(self.route_hint)
+
+        # Meet/Zoom'da qaysi mikrofon tanlanishi kerakligi — eng ko'p
+        # uchraydigan nosozlik shu (suhbatdosh hech narsa eshitmaydi).
+        self.meet_mic_hint = QLabel("")
+        self.meet_mic_hint.setWordWrap(True)
+        self.meet_mic_hint.setStyleSheet(
+            "color: #7dd3fc; font-size: 11px; font-weight: 600;"
+        )
+        self.meet_mic_hint.setVisible(False)
+        layout.addWidget(self.meet_mic_hint)
 
         self.caption_panel = QFrame()
         self.caption_panel.setObjectName("captionPanel")
@@ -1886,7 +1896,14 @@ class TranslatorWindow(QWidget):
         if render_match:
             self._win_audio("setrender", render_match)
         if capture_match:
-            self._win_audio("setcapture", capture_match)
+            out = self._win_audio("setcapture", capture_match)
+            # ps1 "OK: <aniq nom>" qaytaradi — Meet/Zoom'da AYNAN shu mikrofon
+            # tanlanishi kerak. Foydalanuvchiga ko'rsatamiz: Meet "Default"
+            # emas, o'zi tanlagan mikrofonda tursa, suhbatdosh tarjimani
+            # emas, xom ovozni eshitadi (jonli nosozlik, Windows 11).
+            self.win_meeting_mic = (
+                out.split("OK:", 1)[1].strip() if out.startswith("OK:") else ""
+            )
 
     def _win_restore_routing(self) -> None:
         """Stop/chiqishda default qurilmalarni FIZIKga qaytaradi.
@@ -2411,6 +2428,18 @@ class TranslatorWindow(QWidget):
                         "mikrofon ulab, dasturni qayta ishga tushiring."
                     )
                     self.route_hint.setVisible(True)
+                # ENG KO'P UCHRAYDIGAN NOSOZLIK: Meet/Zoom o'zi tanlagan
+                # mikrofonda tursa (tizim default'ida emas), suhbatdosh
+                # TARJIMANI EMAS, xom ovozni eshitadi. Ilova tarjimani qaysi
+                # kabelga yozayotgan bo'lsa, Meet AYNAN o'shaning "Output"
+                # tomonini tanlashi kerak — nomini o'zimiz ko'rsatamiz.
+                meeting_mic = getattr(self, "win_meeting_mic", "")
+                if meeting_mic:
+                    self.meet_mic_hint.setText(
+                        f"🎤 Meet/Zoom mikrofoni: «{meeting_mic}»  "
+                        "(yoki «Same as System»)"
+                    )
+                    self.meet_mic_hint.setVisible(True)
                 process_arguments.extend(
                     [
                         "--duplex",
