@@ -332,3 +332,37 @@ ya'ni oddiy suhbatga tegmaydi — xavf faqat uzluksiz, siqilgan oqimda
 (video/musiqa). Tuzatish "that it that it" gallyutsinatsiya himoyasini
 qayta ochib yuborishi mumkin, shuning uchun alohida, dalil bilan
 qilinadi.
+
+## ISHLAYDIGAN SOZLAMA — TASDIQLANGAN (2026-07-28 kechqurun)
+
+Foydalanuvchi: «mikrofonlarni same qilganimdan keyin hech qanday muammosiz
+ishlayapti». Bu **Zoom sozlamasi**, ilova versiyasi emas — 0.9.71 logi ilova
+rus tarjimasini kabelga to'g'ri yozganini allaqachon ko'rsatgan edi, Zoom
+uni olmagan.
+
+**Zoom → Звук (Audio) — IKKALASI HAM «Как в системе» (Same as System):**
+
+| Zoom sozlamasi | Qiymat |
+| --- | --- |
+| Динамик (Speaker) | **Как в системе (…)** |
+| Микрофон (Microphone) | **Как в системе (…)** ← avval «Микрофон (Logitech BRIO)» edi |
+
+Nega ishlaydi: ilova Start bosilganda Windows default qurilmalarini
+kabellarga o'tkazadi, Stop bosilganda fizik qurilmalarga qaytaradi. Zoom
+«Как в системе» da bo'lsa har ikkalasiga ERGASHADI — meeting o'rtasida ham.
+Buning isboti 0.9.71 logining o'zida bor edi: Zoom KARNAYI allaqachon «Как в
+системе» bo'lgani uchun kiruvchi tarjima ishlagan (28 ta ingliz satri),
+mikrofon esa BRIO'ga qattiq bog'langani uchun chiquvchi tarjima Zoomga
+bormagan.
+
+Qo'shimcha foyda: Stop bosilganda mikrofon o'zi BRIO'ga qaytadi, ya'ni
+dastur ishlamayotgan paytda Zoom oddiy holatda ishlayveradi — meeting
+xonasidagi bilmagan odam ham xato qilmaydi.
+
+**BU SOZLAMAGA TEGILMASIN.** Yangi kompyuterda birinchi qadam — Zoomda
+ikkala qurilmani ham «Как в системе» qilish.
+
+Ixtiyoriy (tarjima ovozi g'alati eshitilsa): Zoomdagi «Автоматически
+регулировать громкость микрофона» ni o'chirish yoki «Звук оригинала для
+музыкантов» ni yoqish — kabelda shovqin ham, aks-sado ham yo'q, Zoom
+filtrlari u yerda faqat zarar qiladi.
