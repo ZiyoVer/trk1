@@ -1,5 +1,5 @@
 #define MyAppName "Live Translator"
-#define MyAppVersion "0.9.68"
+#define MyAppVersion "0.9.69"
 #define MyAppPublisher "Live Translator"
 #define MyAppExeName "Live Translator.exe"
 
@@ -41,7 +41,10 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional icons:"
 
 [Run]
-Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent
+; `skipifsilent` OLIB TASHLANDI: ilova ichidagi avtomatik yangilanish
+; o'rnatuvchini JIM rejimda ishga tushiradi va shundan keyin dastur
+; O'ZI qayta ochilishi kerak (foydalanuvchi hech narsa bosmaydi).
+Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall
 
 [Code]
 { TOZA YANGILASH: yangi versiyani o'rnatishdan OLDIN ishlab turgan dasturni

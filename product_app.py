@@ -13,6 +13,7 @@ import ssl
 import subprocess
 import sys
 import tempfile
+import time
 import threading
 import urllib.request
 import uuid
@@ -173,7 +174,7 @@ from system_audio import (
 
 
 APP_NAME = "Live Translator"
-APP_VERSION = "0.9.68"
+APP_VERSION = "0.9.69"
 
 # Yordam serveri (Railway): loglarni yuborish va yangilanishni tekshirish.
 # Yuklash tokeni ilova ichida bo'lishi SHART (foydalanuvchi bilmaydi) —
@@ -2241,12 +2242,46 @@ class TranslatorWindow(QWidget):
         if blocking:
             thread.join(10.0)
 
+    def _current_default_output(self) -> str:
+        """Hozirgi ASOSIY chiqish qurilmasi nomi (tez, ctypes)."""
+        try:
+            from winaec import default_endpoint_name
+
+            return default_endpoint_name(0)
+        except Exception:
+            return ""
+
     def _restore_routing_worker(self) -> None:
+        """Qurilmalarni tiklaydi va NATIJANI TEKSHIRADI.
+
+        DIQQAT (0.9.65-0.9.68 dagi JIDDIY XATO): bu yerda xato bilan
+        `_win_restore_routing_async()` chaqirilgan edi — ya'ni fon oqimi
+        O'ZINI qayta chaqirib, o'zi ushlab turgan `_routing_lock` ni kutib
+        QOTIB qolardi. Natijada Stop bosilgach na mikrofon, na karnay
+        tiklanmasdi va kompyuter ovozsiz qolardi.
+
+        Endi haqiqiy tiklash chaqiriladi va natija TEKSHIRILADI: default
+        chiqish hali ham virtual kabel bo'lsa, 3 martagacha qayta urinamiz."""
         with self._routing_lock:
-            try:
-                self._win_restore_routing_async()
-            except Exception as error:
-                print(f"[ROUTING] tiklashda xato: {error}", flush=True)
+            for attempt in range(1, 4):
+                try:
+                    self._win_restore_routing()
+                except Exception as error:
+                    print(f"[ROUTING] tiklashda xato: {error}", flush=True)
+                current = self._current_default_output()
+                if current and not is_virtual_device(current):
+                    print(
+                        f"[ROUTING] ovoz qaytdi: {current!r} (urinish {attempt})",
+                        flush=True,
+                    )
+                    self.win_prev_render = ""
+                    self.win_prev_capture = ""
+                    return
+                print(
+                    f"[ROUTING] tiklanmadi (urinish {attempt}), hozir: {current!r}",
+                    flush=True,
+                )
+                time.sleep(0.8)
 
     def _win_restore_routing(self) -> None:
         """Stop/chiqishda default qurilmalarni FIZIKga qaytaradi.
@@ -2293,8 +2328,10 @@ class TranslatorWindow(QWidget):
                 self._win_audio("setcapture", wanted_capture)
             else:
                 self._win_audio("restorecapture")
-        self.win_prev_render = ""
-        self.win_prev_capture = ""
+        # ESLATMA: `win_prev_*` BU YERDA TOZALANMAYDI — chaqiruvchi
+        # (`_restore_routing_worker`) natijani tekshirib, kerak bo'lsa
+        # QAYTA uriniши mumkin; tozalab yuborsak ikkinchi urinish
+        # "qayerga qaytarish" ni bilmay qolardi.
 
     def restore_windows_default_speaker(self, match: str = "") -> str:
         """Default karnayni FIZIK qurilmaga qaytaradi (qo'lda tugma).
@@ -2697,16 +2734,23 @@ class TranslatorWindow(QWidget):
             self.update_button.setText("⬆️ Qayta urinish")
             self.update_hint.setText(f"Yuklab bo‘lmadi: {path[5:][:120]}")
             return
-        # O'rnatuvchi ishlab turgan ilovani o'zi yopadi (PrepareToInstall).
+        # TO'LIQ AVTOMATIK: o'rnatuvchi JIM rejimda ishlaydi — o'zi ishlab
+        # turgan ilovani yopadi (PrepareToInstall: taskkill), eski versiyani
+        # o'chiradi, yangisini o'rnatadi va dasturni QAYTA OCHADI.
+        # Ilgari oddiy ochilardi va foydalanuvchi qadamlarni bosishi kerak
+        # edi ("update qayta-qayta qilsam ham bo'lmayapti").
         try:
             if platform.system() == "Windows":
-                os.startfile(path)  # noqa: S606
+                subprocess.Popen(
+                    [path, "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"],
+                    close_fds=True,
+                )
             else:
                 subprocess.Popen(["open", path])
         except Exception as error:
             self.update_hint.setText(f"O‘rnatuvchi ochilmadi: {error}")
             return
-        self.update_hint.setText("O‘rnatuvchi ochildi — ko‘rsatmaga amal qiling.")
+        self.update_hint.setText("Yangilanmoqda — dastur o‘zi qayta ochiladi…")
 
     def _direction_changed(self, _index: int = -1) -> None:
         self.settings.setValue("translation/active_mode", self._current_mode())
