@@ -173,7 +173,7 @@ from system_audio import (
 
 
 APP_NAME = "Live Translator"
-APP_VERSION = "0.9.67"
+APP_VERSION = "0.9.68"
 
 # Yordam serveri (Railway): loglarni yuborish va yangilanishni tekshirish.
 # Yuklash tokeni ilova ichida bo'lishi SHART (foydalanuvchi bilmaydi) —
@@ -1533,6 +1533,9 @@ class TranslatorWindow(QWidget):
             # foydalanuvchi hech qachon qo'lda tanlashi shart emas.
             self._apply_direction_devices(self._current_mode())
         except Exception as error:
+            # Ilgari bu faqat ekranda ko'rinardi — log orqali tashxis qilib
+            # bo'lmasdi. Endi logda ham qoladi.
+            print(f"[UI] Audio qurilmalar o'qilmadi: {error!r}", flush=True)
             self.route_hint.setText(f"Audio qurilmalar o‘qilmadi: {error}")
 
     def _audio_route_changed(self) -> None:
@@ -2726,13 +2729,48 @@ class TranslatorWindow(QWidget):
                     validate_duplex_routes(self._duplex_routes())
                 except (TypeError, ValueError):
                     devices_ready = False
-        ready = bool(self.api_key and devices_ready and not self.license_check_in_progress)
+        # DIQQAT: API kalit YO'Q bo'lsa ham tugma BOSILADIGAN qoladi —
+        # bosilganda Sozlamalar ochiladi. Ilgari tugma o'chiq bo'lardi va
+        # foydalanuvchi SABABINI BILMASDI (jonli nosozlik: yangi kompyuterda
+        # "tarjimani boshlash umuman bosilmayapti", log: kalit=False).
+        ready = bool(devices_ready and not self.license_check_in_progress)
+        if not self.api_key and not running:
+            if getattr(self, "_api_hint_shown", None) is not True:
+                self._api_hint_shown = True
+                self.route_hint.setText(
+                    "🔑 API kalit kiritilmagan — «⚙️» (Sozlamalar) tugmasini "
+                    "bosib kalitni kiriting, keyin «Tarjimani boshlash»."
+                )
+                self.route_hint.setVisible(True)
+                self._set_status("API KALIT KERAK", "#f59e0b")
+        elif self.api_key:
+            self._api_hint_shown = False
         if not ready and not running and getattr(self, "_last_ready_state", None) != ready:
             print(
                 f"[UI] Start tugmasi O'CHIQ: kalit={bool(self.api_key)} "
                 f"qurilmalar={devices_ready} litsenziya={self.license_check_in_progress}",
                 flush=True,
             )
+            # QAYSI qurilma yetishmayotganini aniq ko'rsatamiz — "qurilmalar=False"
+            # ning o'zi sababni aytmaydi (jonli nosozlik: yangi kompyuterda
+            # tugmalar umuman bosilmadi, sabab logda ko'rinmadi).
+            try:
+                print(
+                    "[UI]   kirish="
+                    f"{self._device_name(self.input_device)!r} "
+                    f"chiqish={self._device_name(self.output_device)!r} "
+                    f"mikrofon={self._device_name(self.duplex_outgoing_input)!r} "
+                    f"kabel={self._device_name(self.duplex_outgoing_output)!r}",
+                    flush=True,
+                )
+                if self._current_mode() == "duplex":
+                    try:
+                        validate_duplex_routes(self._duplex_routes())
+                        print("[UI]   duplex tekshiruvi: OK", flush=True)
+                    except (TypeError, ValueError) as error:
+                        print(f"[UI]   duplex tekshiruvi XATO: {error}", flush=True)
+            except Exception as error:
+                print(f"[UI]   holatni o'qib bo'lmadi: {error}", flush=True)
         self._last_ready_state = ready
         self.start_button.setEnabled(not running and ready)
         self.stop_button.setEnabled(running)
