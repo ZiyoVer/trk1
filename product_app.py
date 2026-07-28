@@ -107,6 +107,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import (
     QApplication,
+    QCheckBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -174,7 +175,7 @@ from system_audio import (
 
 
 APP_NAME = "Live Translator"
-APP_VERSION = "0.9.71"
+APP_VERSION = "0.9.72"
 
 
 def _read_channel() -> str:
@@ -515,7 +516,7 @@ class TranslatorWindow(QWidget):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle(APP_NAME)
-        self.setFixedSize(640, 530)
+        self.setFixedSize(640, 558)
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
             | Qt.WindowType.WindowStaysOnTopHint
@@ -563,6 +564,21 @@ class TranslatorWindow(QWidget):
         # naushnikda ham eshittiradi (default: yoqiq).
         self.monitor_enabled = (
             str(self.settings.value("audio/monitor_outgoing", "false")).lower() == "true"
+        )
+        # «MEETING O'ZBEKCHA» — kiruvchi tarjima UMUMAN ishga tushmaydi.
+        #
+        # Nima uchun kerak (2026-07-28, Zoom ko'rsatuvi): kiruvchi yo'nalish
+        # AUTO → O'ZBEK. Meetingdagi odamlar o'zbekcha gapirsa, tarjima
+        # qiladigan narsa qolmaydi — model jim turadi. Ayni paytda dastur
+        # meeting ovozini karnayga emas, virtual kabelga burib yuborgan
+        # bo'ladi, ya'ni asl ovoz ham eshitilmaydi. Natija: xona JIMJIT
+        # (logda o'sha payt bironta [INCOMING] satri yo'q).
+        #
+        # Bu rejimda tizim chiqishiga UMUMAN tegilmaydi: meeting ovozi
+        # karnaydan jonli, o'z ovozida eshitiladi; faqat SIZNING gapingiz
+        # tarjima bo'lib meetingga boradi.
+        self.meeting_uz = (
+            str(self.settings.value("translation/meeting_uz", "false")).lower() == "true"
         )
         self.mode_pairs = {
             mode.code: normalize_pair(
@@ -793,6 +809,22 @@ class TranslatorWindow(QWidget):
         simple_row.addLayout(arrow_group)
         simple_row.addLayout(meeting_group, 1)
         layout.addLayout(simple_row)
+
+        self.meeting_uz_check = QCheckBox(
+            "Meeting o‘zbekcha — hammani jonli, o‘z ovozida eshitaman"
+        )
+        self.meeting_uz_check.setToolTip(
+            "Meetingdagi odamlar o‘zbekcha gapirsa yoqing.\n"
+            "Kiruvchi tarjima o‘chadi — meeting ovozi karnaydan jonli "
+            "eshitiladi.\nSizning gapingiz esa avvalgidek tarjima bo‘lib "
+            "meetingga boradi."
+        )
+        self.meeting_uz_check.setStyleSheet(
+            "color: #cbd5e1; font-size: 11px; font-weight: 600;"
+        )
+        self.meeting_uz_check.setChecked(self.meeting_uz)
+        self.meeting_uz_check.toggled.connect(self._toggle_meeting_uz)
+        layout.addWidget(self.meeting_uz_check)
 
         # === Eski til-widgetlari: YASHIRIN. Mavjud ichki logika (mode_pairs,
         # ishga tushirish) shular orqali ishlaydi; foydalanuvchi esa
@@ -1131,6 +1163,13 @@ class TranslatorWindow(QWidget):
         top_show_action = menu.addAction(t("Oynani ko‘rsatish"))
         top_show_action.triggered.connect(self._show_window)
         menu.addSeparator()
+        # Oynani ochmasdan almashtirish uchun (foydalanuvchi ko'pincha
+        # tray'dan boshqaradi). Oynadagi belgi bilan bir xil holatda turadi.
+        self.tray_meeting_uz_action = menu.addAction("Meeting o‘zbekcha")
+        self.tray_meeting_uz_action.setCheckable(True)
+        self.tray_meeting_uz_action.setChecked(getattr(self, "meeting_uz", False))
+        self.tray_meeting_uz_action.toggled.connect(self._toggle_meeting_uz)
+        menu.addSeparator()
         # Sodda tray (foydalanuvchi talabi): monitor ("o‘zim ham eshitay"),
         # log yig‘ish (ZIP), mikrofon/karnay tiklash — olib tashlandi.
         open_logs_action = menu.addAction(t("Loglarni ochish"))
@@ -1310,6 +1349,46 @@ class TranslatorWindow(QWidget):
         except Exception as error:
             self._set_status("LOGLARNI SAQLAB BO‘LMADI", "#ef4444")
             self.route_hint.setText(str(error)[:180])
+
+    def _toggle_meeting_uz(self, enabled: bool) -> None:
+        """«Meeting o'zbekcha» belgisi (oyna va tray bir-biriga mos turadi)."""
+        if enabled == getattr(self, "meeting_uz", False):
+            return
+        if self.process is not None:
+            # Rejim almashuvi audio yo'llarini qayta quradi — jonli tarjimani
+            # jimgina uzib yubormaymiz (rejim tanlash bilan bir xil qoida).
+            self._sync_meeting_uz_widgets()
+            if self.tray is not None:
+                self.tray.showMessage(
+                    APP_NAME,
+                    t("Rejimni almashtirish uchun avval tarjimani to‘xtating."),
+                    QSystemTrayIcon.MessageIcon.Information,
+                    4000,
+                )
+            return
+        self.meeting_uz = enabled
+        self.settings.setValue("translation/meeting_uz", "true" if enabled else "false")
+        self.settings.sync()
+        self._sync_meeting_uz_widgets()
+        print(f"[UI] Meeting o'zbekcha: {'YOQILDI' if enabled else 'o‘chirildi'}", flush=True)
+        # Qurilmalar yangi rejimga moslanadi: gapirishda kirish = FIZIK
+        # mikrofon, chiqish = virtual kabel (ikki tomonlamada aksincha).
+        self._sync_mode_ui(apply_devices=True)
+        self._sync_tray()
+        self._set_controls(running=False)
+
+    def _sync_meeting_uz_widgets(self) -> None:
+        """Oynadagi belgi va tray bandini haqiqiy holatga qaytaradi."""
+        state = getattr(self, "meeting_uz", False)
+        for widget in (
+            getattr(self, "meeting_uz_check", None),
+            getattr(self, "tray_meeting_uz_action", None),
+        ):
+            if widget is None:
+                continue
+            widget.blockSignals(True)
+            widget.setChecked(state)
+            widget.blockSignals(False)
 
     def _toggle_monitor(self, enabled: bool) -> None:
         self.monitor_enabled = enabled
@@ -2407,9 +2486,12 @@ class TranslatorWindow(QWidget):
         QMessageBox.critical(self, "Driver o‘rnatilmadi", error)
 
     def _current_mode(self) -> str:
-        # Ilova endi FAQAT ikki tomonlama (foydalanuvchi talabi) — rejim
-        # tanlash olib tashlandi.
-        return "duplex"
+        # Ilova odatda FAQAT ikki tomonlama (foydalanuvchi talabi) — rejim
+        # tanlash olib tashlandi. YAGONA istisno: «Meeting o'zbekcha»
+        # belgisi. U yoqilganda ilova allaqachon mavjud va sinalgan
+        # "gapirish" yo'lidan ketadi: kiruvchi kanal ochilmaydi, tizim
+        # chiqishiga tegilmaydi (faqat mikrofon kabelga o'tkaziladi).
+        return "outgoing" if getattr(self, "meeting_uz", False) else "duplex"
 
     def _current_pair(self) -> LanguagePair:
         mode = self._current_mode()
@@ -2459,7 +2541,9 @@ class TranslatorWindow(QWidget):
         self.duplex_outgoing_audio_panel.setVisible(False)
         self.duplex_outgoing_caption_panel.setVisible(duplex)
         self.language_label.setText("Tillar")
-        self.setFixedSize(640, 530)
+        # 530 → 558: «Meeting o'zbekcha» belgisi uchun bitta qator qo'shildi.
+        self.setFixedSize(640, 558)
+        self._sync_meeting_uz_widgets()
         self._reset_captions()
         if apply_devices:
             self._apply_direction_devices(mode)
@@ -3236,7 +3320,27 @@ class TranslatorWindow(QWidget):
                             output_arg = prev
                     elif output_virtual and not input_virtual:
                         # Gapirish: Zoom mic -> kabel (app yozadigan kabel).
+                        # DIQQAT: tizim CHIQISHIGA tegilmaydi (birinchi arg
+                        # bo'sh) — meeting ovozi karnayda jonli qoladi.
                         self._win_apply_routing("", self._win_cable_match(output_name))
+                        # AKS-SADO HIMOYASI. Bu rejimda meeting ovozi
+                        # KARNAYDAN chiqadi, ya'ni fizik mikrofon uni
+                        # eshitadi. Himoyasiz dastur BOSHQALARNING gapini
+                        # "siz gapirdingiz" deb tarjima qilib meetingga
+                        # qaytaradi — 2026-07-28 Zoom ko'rsatuvida aynan shu
+                        # bo'lgan (log: [OUTGOING] «Alloh, how are you?» →
+                        # RU, o'sha soniyada [INCOMING] «Hello, how are
+                        # you?»). Naushnikda bu fizik jihatdan yo'q.
+                        reference = self._aec_reference_output()
+                        if reference and not self._output_is_ear_safe(reference):
+                            process_arguments.extend(
+                                ["--winaec", "--winaec-speaker", reference]
+                            )
+                            self.route_hint.setText(
+                                f"🔊 Meeting ovozi «{reference}» dan jonli eshitiladi. "
+                                "Exo-bekor qilish (AEC) yoqildi — erkin gapiring."
+                            )
+                            self.route_hint.setVisible(True)
                 pair = self._current_pair()
                 process_arguments.extend(
                     [
@@ -3912,6 +4016,24 @@ class TranslatorWindow(QWidget):
         except Exception as error:
             print(f"[ROUTING] naushnik qidiruvi xato: {error}", flush=True)
         return ""
+
+    def _aec_reference_output(self) -> str:
+        """Aks-sado bekor qilish uchun ORIENTIR qurilma.
+
+        Bu foydalanuvchi AYNAN eshitayotgan chiqish — «Meeting o'zbekcha»
+        rejimida meeting ovozi shundan yangraydi va mikrofon shuni eshitadi.
+        Tartib: «ESHITAMAN» dagi tanlov → ulangan naushnik → tizim default'i
+        (bu rejimda default o'zgartirilmaydi, shuning uchun ishonchli)."""
+        chosen = getattr(self, "preferred_output_name", "")
+        if chosen and not is_virtual_device(chosen):
+            return chosen
+        headphone = self._connected_headphone_name()
+        if headphone:
+            return headphone
+        current = self._current_default_output()
+        if current and not is_virtual_device(current):
+            return current
+        return self._physical_output_name()
 
     def _physical_output_name(self) -> str:
         """Nazorat ovozi uchun virtual bo'lmagan chiqish (tizim tanlovi afzal)."""

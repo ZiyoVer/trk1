@@ -243,3 +243,63 @@ Ikki oqim bir-biriga TA'SIR QILMAYDI: OPS mashinasi `LT_OPS_*` ni, qolganlar
 buzmaydi. Ikki ehtiyot shart: (1) `LT_OPS_*` ni bo'sh qoldirma — bo'sh bo'lsa
 OPS barqaror oqimga tushib qoladi; (2) OPS mashinasiga oddiy o'rnatuvchini
 qo'lda o'rnatma — u `channel.txt` ni o'chiradi.
+
+## v0.9.72 — «Meeting o'zbekcha» (2026-07-28, Zoom ko'rsatuvidan keyin)
+
+### Nima bo'lgan (log dalillari, `conference` OPS 0.9.71, 14:15–14:22)
+
+Dvigatel benuqson ishlagan: bironta xato, uzilish, qayta ulanish yo'q,
+`[AEC] ISHLADI`. Muammo boshqa yerda edi:
+
+1. **Chiquvchi tarjima tayyor bo'lgan** (`UZ › Hammaga assalomu alaykum →
+   RU › Всем здравствуйте`, chiqish `CABLE Input`). Hamkasblar ruschani
+   eshitmagan bo'lsa — Zoom mikrofonni `CABLE Output` dan olmagan. Zoom
+   qurilmani meetingga kirganda "yopishtiradi" va keyin Windows default
+   o'zgarsa ergashmaydi; Meet (brauzer) ergashadi — **Meet bilan Zoom farqi
+   aynan shu**.
+2. **Kiruvchi yo'nalishda 28 ta ingliz satri, o'zbek manba BITTA HAM YO'Q.**
+   Kimdir o'zbekcha gapirganda model jim qolgan (AUTO → UZ: tarjima
+   qiladigan narsa yo'q). Ayni paytda meeting ovozi kabelga burilgani uchun
+   asl ovoz ham eshitilmagan → **xona jimjit**.
+3. **Mikrofon narigi tomonni eshitib, dastur uni meetingga qaytargan**:
+   `14:20:49 [OUTGOING] UZ › Alloh, how are you? → RU › Боже, как ты?`,
+   o'sha soniyada `14:20:50 [INCOMING] EN › Hello, hello. How are you?`.
+   3 marta. Chiquvchi satr kiruvchidan OLDIN kelgan → ovoz xonada, havoda
+   yangragan (boshqa qurilma meetingda ochiq bo'lgan). AEC faqat o'z
+   orientir qurilmasini bekor qiladi.
+
+Hamkasblar mashinalari (`x-safarov`, `j-zarmasov`) — **alohida masala**:
+ularning hech bir logida `engine.log` yo'q, ya'ni tarjima u yerda hech qachon
+ishga tushmagan (`j-zarmasov` da API kalit umuman kiritilmagan).
+
+### Yechim: «Meeting o'zbekcha» belgisi
+
+Oynada belgi + tray'da shu band. Yoqilganda `_current_mode()` **"outgoing"**
+qaytaradi — ya'ni ilova allaqachon mavjud va sinalgan "gapirish" yo'lidan
+ketadi:
+
+- kiruvchi kanal umuman ochilmaydi;
+- tizim CHIQISHIGA tegilmaydi (`_win_apply_routing("", kabel)` — birinchi
+  argument bo'sh, `audio_config.ps1` `startduplex` uni `if ($p[0])` bilan
+  o'tkazib yuboradi), demak meeting ovozi karnaydan **jonli** eshitiladi;
+- faqat mikrofon chiquvchi kabelga o'tkaziladi (Zoom mikrofoni).
+
+Ikki tomonlama yo'lga **bir belgi ham tegilmadi** (AST bilan tekshirildi:
+yangi shox `if args.duplex and len(translators) == 2` ga `elif` bo'lib
+ulanadi).
+
+### AEC ham kerak bo'ldi (aks holda 3-band takrorlanardi)
+
+Bu rejimda meeting ovozi karnaydan chiqadi va fizik mikrofon uni eshitadi.
+`CaptureGate` bu yerda foydasiz (kuzatadigan ijro yo'q), `--winaec` ulanishi
+esa avval FAQAT duplex shoxida bor edi. Endi bitta kanalli holat uchun ham
+ulanadi; orientir qurilma GUI'dan **mavjud** `--winaec-speaker` argumenti
+bilan keladi (`_aec_reference_output()`: ESHITAMAN tanlovi → naushnik →
+tizim default'i). Naushnikda AEC qo'shilmaydi — u yerda aks-sado fizik
+jihatdan yo'q.
+
+### Sinov qoidalari (kodsiz, baribir kerak)
+
+1. Zoom → Settings → Audio → Microphone = `CABLE Output (VB-Audio Virtual
+   Cable)`. Bir marta, Zoom eslab qoladi.
+2. Xonada FAQAT bitta kompyuter meetingda tursin.

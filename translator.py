@@ -1071,6 +1071,47 @@ async def async_main(args: argparse.Namespace) -> int:
                 outgoing_translator.capture_gate = CaptureGate(
                     lambda: incoming_translator.player
                 )
+        elif (
+            len(translators) == 1
+            and getattr(args, "winaec", False)
+            and getattr(args, "winaec_speaker", "")
+            and platform.system() == "Windows"
+        ):
+            # FAQAT-GAPIRISH («Meeting o'zbekcha») rejimi. Bu yerda kiruvchi
+            # kanal umuman yo'q, ya'ni meeting ovozi KARNAYDAN jonli
+            # yangraydi va fizik mikrofon uni eshitadi. Yuqoridagi
+            # `CaptureGate` bu holatda foydasiz (kuzatadigan ijro yo'q),
+            # shuning uchun himoyani Microsoft AEC beradi: orientir qurilma
+            # GUI'dan `--winaec-speaker` bilan keladi (foydalanuvchi AYNAN
+            # eshitayotgan chiqish).
+            #
+            # Himoyasiz nima bo'lishi 2026-07-28 Zoom logida ko'rindi:
+            # dastur boshqalarning inglizcha gapini "siz gapirdingiz" deb
+            # ruschaga o'girib meetingga qaytargan.
+            from winaec import WinAECCapture
+
+            solo = translators[0]
+
+            def _aec_fallback_solo() -> None:
+                solo.capture_gate = PushToTalkGate(make_ptt_key_check())
+
+            with suppress(Exception):
+                solo.capture.stream.close()  # ishlatilmagan xom capture
+
+            def _solo_winaec_factory(device, deliver):  # noqa: ANN001
+                return WinAECCapture(
+                    device, args.winaec_speaker, deliver, _aec_fallback_solo,
+                    log=solo._log,
+                )
+
+            solo.capture_factory = _solo_winaec_factory
+            solo.capture = _solo_winaec_factory(
+                solo.input_device, solo._from_audio_thread
+            )
+            solo._log(
+                "[AEC] Meeting o'zbekcha: exo-bekor qilish yoqildi "
+                f"(orientir: {args.winaec_speaker!r})."
+            )
         loop = asyncio.get_running_loop()
 
         def stop_all() -> None:
