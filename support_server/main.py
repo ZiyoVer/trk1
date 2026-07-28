@@ -74,8 +74,10 @@ def update_manifest(channel: str = Query(default="")) -> JSONResponse:
     OPS o'zgaruvchilari bo'sh bo'lsa barqaror oqimga qaytadi — ya'ni
     noto'g'ri sozlashda ham ilova yangilanishsiz qolmaydi.
 
-    Qiymatlar Railway o'zgaruvchilaridan olinadi — yangi versiya chiqarganda
-    qayta deploy shart emas, `railway variables --set` yetadi."""
+    Qiymatlar Railway o'zgaruvchilaridan olinadi. DIQQAT: `railway variables
+    --set` o'zi YETMAYDI — qiymat faqat xizmat qayta yuklanganda kuchga
+    kiradi (`railway redeploy --yes`). 2026-07-28 da shu sababdan barqaror
+    oqim eski versiyani ko'rsatib turgan edi."""
     ops = channel.strip().lower() == "ops"
     version = (os.getenv("LT_OPS_VERSION", "") if ops else "") or os.getenv("LT_LATEST_VERSION", "")
     url = (os.getenv("LT_OPS_URL", "") if ops else "") or os.getenv("LT_LATEST_URL", "")

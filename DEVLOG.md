@@ -231,4 +231,15 @@ railway variables --set LT_OPS_VERSION=x.y.z --set LT_OPS_URL=<OPS exe>
 Barqarorga ko'chirish (ishonch hosil qilgandan keyin):
 ```
 railway variables --set LT_LATEST_VERSION=x.y.z --set LT_LATEST_URL=<oddiy exe>
+railway redeploy --yes
 ```
+**Qayta yuklash SHART.** `railway variables --set` qiymatni yozadi, lekin
+ishlab turgan konteyner uni ko'rmaydi — `/update` eski versiyani qaytaraverdi
+(2026-07-28 da aynan shunday bo'ldi). Buyruqlar `support_server/` katalogidan
+ishlaydi (loyiha o'sha yerga bog'langan).
+
+Ikki oqim bir-biriga TA'SIR QILMAYDI: OPS mashinasi `LT_OPS_*` ni, qolganlar
+`LT_LATEST_*` ni o'qiydi. Boshliqlarga yangi versiya chiqarish OPS ni
+buzmaydi. Ikki ehtiyot shart: (1) `LT_OPS_*` ni bo'sh qoldirma — bo'sh bo'lsa
+OPS barqaror oqimga tushib qoladi; (2) OPS mashinasiga oddiy o'rnatuvchini
+qo'lda o'rnatma — u `channel.txt` ni o'chiradi.
