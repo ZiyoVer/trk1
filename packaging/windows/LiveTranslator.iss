@@ -1,5 +1,5 @@
 #define MyAppName "Live Translator"
-#define MyAppVersion "0.9.69"
+#define MyAppVersion "0.9.70"
 #define MyAppPublisher "Live Translator"
 #define MyAppExeName "Live Translator.exe"
 
@@ -11,7 +11,16 @@ AppPublisher={#MyAppPublisher}
 DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 OutputDir=..\..\installer\windows
+; IKKI XIL O'RNATUVCHI, BITTA KOD:
+;   oddiy  -> LiveTranslator-Setup-x.y.z.exe       (boshliq, hamkasblar)
+;   /DOPS  -> LiveTranslator-OPS-Setup-x.y.z.exe   (monitorli sinov mashinasi)
+; Farqi faqat `channel.txt` da — u yangilanish oqimini ajratadi, shunda
+; sinov versiyasi barqaror kompyuterlarga ARALASHMAYDI.
+#ifdef OPS
+OutputBaseFilename=LiveTranslator-OPS-Setup-{#MyAppVersion}
+#else
 OutputBaseFilename=LiveTranslator-Setup-{#MyAppVersion}
+#endif
 Compression=lzma2
 SolidCompression=yes
 SetupIconFile=..\icon\AppIcon.ico
@@ -32,6 +41,16 @@ RestartApplications=no
 
 [Files]
 Source: "..\..\dist\product\Live Translator\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+#ifdef OPS
+Source: "channel-ops.txt"; DestDir: "{app}"; DestName: "channel.txt"; Flags: ignoreversion
+#endif
+
+#ifndef OPS
+[InstallDelete]
+; Barqaror versiya OPS belgisini olib tashlaydi — OPS o'rnatilgan
+; kompyuterga barqarorni o'rnatsak, u sinov oqimida qolib ketmasin.
+Type: files; Name: "{app}\channel.txt"
+#endif
 
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"

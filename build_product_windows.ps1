@@ -59,12 +59,24 @@ $Iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
 if (-not (Test-Path $Iscc)) {
     throw "Inno Setup 6 topilmadi: $Iscc"
 }
-& $Iscc packaging\windows\LiveTranslator.iss
-if ($LASTEXITCODE -ne 0) { throw "Inno Setup kompilyatsiyasi muvaffaqiyatsiz (exit $LASTEXITCODE)" }
+# Versiyani .iss dan O'QIYMIZ — ilgari bu yerda qo'lda yozilgan raqam
+# turardi va versiya oshganda build "installer yaratilmadi" deb yiqilardi.
+$IssPath = Join-Path $Root "packaging\windows\LiveTranslator.iss"
+$Version = ([regex]::Match((Get-Content -Raw $IssPath), '#define MyAppVersion "([^"]+)"')).Groups[1].Value
+if (-not $Version) { throw "MyAppVersion .iss ichidan topilmadi" }
 
-$Installer = Join-Path $Root "installer\windows\LiveTranslator-Setup-0.9.69.exe"
-if (-not (Test-Path $Installer)) { throw "Installer yaratilmadi: $Installer" }
-if ($SignTool) {
-    & $SignTool sign /sha1 $env:WINDOWS_SIGN_CERT_SHA1 /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 $Installer
+# Ikkita o'rnatuvchi: oddiy (barqaror) va OPS (monitorli sinov mashinasi).
+# Ikkalasi ham AYNAN bir xil dastur; farqi faqat yangilanish oqimida.
+$Outputs = @()
+foreach ($Variant in @(@{ Def = $null; Name = "LiveTranslator-Setup-$Version.exe" },
+                       @{ Def = "OPS"; Name = "LiveTranslator-OPS-Setup-$Version.exe" })) {
+    if ($Variant.Def) { & $Iscc "/D$($Variant.Def)" $IssPath } else { & $Iscc $IssPath }
+    if ($LASTEXITCODE -ne 0) { throw "Inno Setup kompilyatsiyasi muvaffaqiyatsiz (exit $LASTEXITCODE)" }
+    $Installer = Join-Path $Root "installer\windows\$($Variant.Name)"
+    if (-not (Test-Path $Installer)) { throw "Installer yaratilmadi: $Installer" }
+    if ($SignTool) {
+        & $SignTool sign /sha1 $env:WINDOWS_SIGN_CERT_SHA1 /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 $Installer
+    }
+    $Outputs += $Installer
 }
-Write-Host "TAYYOR: $Installer"
+Write-Host "TAYYOR: $($Outputs -join ', ')"

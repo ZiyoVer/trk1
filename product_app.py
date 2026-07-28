@@ -174,7 +174,28 @@ from system_audio import (
 
 
 APP_NAME = "Live Translator"
-APP_VERSION = "0.9.69"
+APP_VERSION = "0.9.70"
+
+
+def _read_channel() -> str:
+    """Qaysi oqimdan yangilanish olinadi: "ops" yoki "" (oddiy Windows).
+
+    Nima uchun: monitorli (sinov) kompyuter yangi versiyalarni BIRINCHI
+    bo'lib oladi, boshliq va hamkasblarning kompyuterlari esa faqat
+    barqaror versiyada qoladi — ular ARALASHMASLIGI kerak. Oqim nomi
+    ilova papkasidagi `channel.txt` faylida turadi; uni "Windows OPS"
+    o'rnatuvchisi yozadi, oddiy o'rnatuvchi esa o'chiradi.
+    """
+    base = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
+    try:
+        value = (base / "channel.txt").read_text(encoding="utf-8", errors="replace").strip().lower()
+    except OSError:
+        return ""
+    return value if value in {"ops"} else ""
+
+
+APP_CHANNEL = _read_channel()
+APP_EDITION = "Windows OPS" if APP_CHANNEL == "ops" else "Windows"
 
 # Yordam serveri (Railway): loglarni yuborish va yangilanishni tekshirish.
 # Yuklash tokeni ilova ichida bo'lishi SHART (foydalanuvchi bilmaydi) —
@@ -1141,7 +1162,7 @@ class TranslatorWindow(QWidget):
         # bo'lsa — odatiy hol) kursor oxirgi band ustida qoladi. Bosilmaydigan
         # versiya yozuvi tasodifan "Chiqish"ni bosib yuborishning oldini oladi.
         menu.addSeparator()
-        tray_version_action = menu.addAction(f"{APP_NAME} {APP_VERSION}")
+        tray_version_action = menu.addAction(f"{APP_NAME} {APP_VERSION} · {APP_EDITION}")
         tray_version_action.setEnabled(False)
         self.tray_menu = menu
         self.tray.setContextMenu(menu)
@@ -2569,7 +2590,7 @@ class TranslatorWindow(QWidget):
     def _collect_logs_text(self) -> str:
         """Yuborish uchun loglarni bitta matnga yig'adi (oxirgi qismlari)."""
         parts: list[str] = [
-            f"=== {APP_NAME} {APP_VERSION} ===",
+            f"=== {APP_NAME} {APP_VERSION} ({APP_EDITION}) ===",
             f"OS: {platform.system()} {platform.release()} ({platform.machine()})",
             f"Vaqt: {datetime.now():%Y-%m-%d %H:%M:%S}",
             f"Oxirgi xato: {self.last_engine_error or '-'}",
@@ -2666,7 +2687,8 @@ class TranslatorWindow(QWidget):
 
     def _update_check_worker(self) -> None:
         try:
-            request = urllib.request.Request(f"{SUPPORT_URL.rstrip('/')}/update")
+            suffix = f"?channel={APP_CHANNEL}" if APP_CHANNEL else ""
+            request = urllib.request.Request(f"{SUPPORT_URL.rstrip('/')}/update{suffix}")
             with urllib.request.urlopen(
                 request, timeout=15, context=secure_ssl_context()
             ) as response:
@@ -2734,15 +2756,38 @@ class TranslatorWindow(QWidget):
             self.update_button.setText("⬆️ Qayta urinish")
             self.update_hint.setText(f"Yuklab bo‘lmadi: {path[5:][:120]}")
             return
-        # TO'LIQ AVTOMATIK: o'rnatuvchi JIM rejimda ishlaydi — o'zi ishlab
-        # turgan ilovani yopadi (PrepareToInstall: taskkill), eski versiyani
-        # o'chiradi, yangisini o'rnatadi va dasturni QAYTA OCHADI.
-        # Ilgari oddiy ochilardi va foydalanuvchi qadamlarni bosishi kerak
-        # edi ("update qayta-qayta qilsam ham bo'lmayapti").
+        # ==================================================================
+        # NEGA YANGILANISH ISHLAMAYOTGAN EDI ("update qayta-qayta qilsam ham
+        # bo'lmayapti") — ildiz sabab:
+        #
+        # O'rnatuvchini shu yerdan to'g'ridan-to'g'ri ochsak, u ilovaning
+        # BOLA jarayoni bo'lib qolardi. O'rnatuvchi ichida esa
+        # `taskkill /IM "Live Translator.exe" /T /F` bor — `/T` bayrog'i
+        # jarayonni BUTUN DARAXTI bilan o'ldiradi, ya'ni o'rnatuvchi
+        # o'z-o'zini o'ldirardi. Natijada eski versiya joyida qolardi va
+        # foydalanuvchi necha marta bosmasin, hech narsa o'zgarmasdi.
+        #
+        # TUZATISH: o'rnatuvchini ilova daraxtidan AJRATIB ishga tushiramiz.
+        #   1) Vaqtinchalik .cmd yozamiz;
+        #   2) uni alohida (DETACHED) ochamiz — u 3 soniya kutadi;
+        #   3) ilova shu orada O'ZI toza yopiladi (audio yo'llari tiklanadi,
+        #      fayllar qulfdan bo'shaydi);
+        #   4) keyin o'rnatuvchi jim rejimda ishlaydi va yakunida dasturni
+        #      qayta ochadi ([Run] dagi `skipifsilent` olib tashlangan).
+        # ==================================================================
         try:
             if platform.system() == "Windows":
+                script = Path(tempfile.gettempdir()) / "lt-update.cmd"
+                script.write_text(
+                    "@echo off\r\n"
+                    "ping -n 4 127.0.0.1 >nul\r\n"
+                    f'start "" "{path}" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART\r\n',
+                    encoding="utf-8",
+                )
+                detached = 0x00000008 | 0x08000000  # DETACHED_PROCESS | CREATE_NO_WINDOW
                 subprocess.Popen(
-                    [path, "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"],
+                    ["cmd", "/c", str(script)],
+                    creationflags=detached,
                     close_fds=True,
                 )
             else:
@@ -2751,6 +2796,10 @@ class TranslatorWindow(QWidget):
             self.update_hint.setText(f"O‘rnatuvchi ochilmadi: {error}")
             return
         self.update_hint.setText("Yangilanmoqda — dastur o‘zi qayta ochiladi…")
+        print("[UPDATE] o'rnatuvchi ajratilgan holda ishga tushdi, ilova yopilmoqda", flush=True)
+        if platform.system() == "Windows":
+            # O'rnatuvchi fayllarni qulfsiz topishi uchun o'zimiz chiqamiz.
+            QTimer.singleShot(400, self._quit_from_tray)
 
     def _direction_changed(self, _index: int = -1) -> None:
         self.settings.setValue("translation/active_mode", self._current_mode())
@@ -4171,7 +4220,7 @@ def setup_app_logging() -> Path:
         traceback.print_exception(kind, value, trace, file=sys.stderr)
 
     sys.excepthook = log_uncaught
-    print(f"=== {APP_NAME} {APP_VERSION} ===")
+    print(f"=== {APP_NAME} {APP_VERSION} ({APP_EDITION}) ===")
     print(f"Vaqt      : {datetime.now().isoformat(timespec='seconds')}")
     print(f"OS        : {platform.system()} {platform.release()} ({platform.machine()})")
     print(f"Python    : {platform.python_version()} | frozen={getattr(sys, 'frozen', False)}")

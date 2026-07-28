@@ -62,17 +62,30 @@ def health() -> dict:
 
 
 @app.get("/update")
-def update_manifest() -> JSONResponse:
+def update_manifest(channel: str = Query(default="")) -> JSONResponse:
     """Ilova ochilganda shu manzilni so'raydi.
 
+    IKKI OQIM (foydalanuvchi talabi: "monitor uchun alohida qil va
+    aralashtirma"):
+      • channel=ops → monitorli sinov kompyuteri. Yangi versiyani BIRINCHI
+        bo'lib oladi (LT_OPS_VERSION / LT_OPS_URL).
+      • oqim ko'rsatilmasa → barqaror oqim (boshliq, hamkasblar):
+        LT_LATEST_VERSION / LT_LATEST_URL.
+    OPS o'zgaruvchilari bo'sh bo'lsa barqaror oqimga qaytadi — ya'ni
+    noto'g'ri sozlashda ham ilova yangilanishsiz qolmaydi.
+
     Qiymatlar Railway o'zgaruvchilaridan olinadi — yangi versiya chiqarganda
-    faqat LT_LATEST_VERSION va LT_LATEST_URL ni yangilaymiz (qayta deploy
-    ham shart emas, `railway variables --set` yetadi)."""
+    qayta deploy shart emas, `railway variables --set` yetadi."""
+    ops = channel.strip().lower() == "ops"
+    version = (os.getenv("LT_OPS_VERSION", "") if ops else "") or os.getenv("LT_LATEST_VERSION", "")
+    url = (os.getenv("LT_OPS_URL", "") if ops else "") or os.getenv("LT_LATEST_URL", "")
+    notes = (os.getenv("LT_OPS_NOTES", "") if ops else "") or os.getenv("LT_LATEST_NOTES", "")
     return JSONResponse(
         {
-            "version": os.getenv("LT_LATEST_VERSION", ""),
-            "url": os.getenv("LT_LATEST_URL", ""),
-            "notes": os.getenv("LT_LATEST_NOTES", ""),
+            "channel": "ops" if ops else "stable",
+            "version": version,
+            "url": url,
+            "notes": notes,
             "mandatory": os.getenv("LT_UPDATE_MANDATORY", "0") == "1",
         }
     )
