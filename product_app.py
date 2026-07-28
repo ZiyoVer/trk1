@@ -173,7 +173,7 @@ from system_audio import (
 
 
 APP_NAME = "Live Translator"
-APP_VERSION = "0.9.66"
+APP_VERSION = "0.9.67"
 
 # Yordam serveri (Railway): loglarni yuborish va yangilanishni tekshirish.
 # Yuklash tokeni ilova ichida bo'lishi SHART (foydalanuvchi bilmaydi) —
@@ -2218,8 +2218,14 @@ class TranslatorWindow(QWidget):
         bo'lsa tashxis uchun ishlatiladi."""
         self.meet_mic_hint.setVisible(False)
 
-    def _win_restore_routing_async(self) -> None:
+    def _win_restore_routing_async(self, blocking: bool = False) -> None:
         """Qurilmalarni FON oqimida tiklaydi (GUI qotmasin).
+
+        `blocking=True` — ILOVA YOPILAYOTGANDA: tugashini KUTAMIZ. Aks holda
+        fon oqimi `daemon` bo'lgani uchun `QApplication.quit()` uni darhol
+        o'ldiradi va mikrofon/karnay KABELDA qolib ketadi (jonli nosozlik:
+        "tray'dan chiqsam qaytmayapti, dasturdan chiqsam qaytadi" — chunki
+        oynadan yopilganda ilova tray'da qolib, oqim tugashga ulgurardi).
 
         JONLI NOSOZLIK: "To'xtatishni bossam to'xtamayapti, UI qotib qolgan".
         Sabab — Stop bosilganda `_win_restore_routing()` GUI oqimida
@@ -2227,7 +2233,10 @@ class TranslatorWindow(QWidget):
         tugaganda YANA bir marta. Endi ikkalasi ham fon oqimida."""
         if platform.system() != "Windows":
             return
-        threading.Thread(target=self._restore_routing_worker, daemon=True).start()
+        thread = threading.Thread(target=self._restore_routing_worker, daemon=True)
+        thread.start()
+        if blocking:
+            thread.join(10.0)
 
     def _restore_routing_worker(self) -> None:
         with self._routing_lock:
@@ -3188,7 +3197,14 @@ class TranslatorWindow(QWidget):
         self.engine_log_timer.start()
         if platform.system() != "Darwin":
             self.device_signature = self._output_device_signature()
-            self.device_change_timer.start()
+            # O'CHIRILDI (0.9.67): bu taymer har 3 soniyada PortAudio'ni
+            # to'liq qayta yuklardi (`sd._terminate()/_initialize()`), ya'ni
+            # butun Windows audio quyi tizimini qo'zg'atardi. Natijada
+            # YouTube/video ovozi uzilib, tarjima kechikardi, kompyuter
+            # "qotgandek" bo'lardi. Chiqish qurilmasi endi foydalanuvchi
+            # tanlovi bilan qat'iy belgilangani uchun (ESHITAMAN, saqlanadi)
+            # bu kuzatuv kerak emas. Qurilma almashsa: Stop -> Start.
+            # self.device_change_timer.start()
         self.connection_timer.start(20_000 if mode == "duplex" else 12_000)
         if self.license_client and self.license_client.enabled:
             threading.Thread(
@@ -3937,9 +3953,11 @@ class TranslatorWindow(QWidget):
         self.previous_system_input = None
         if platform.system() == "Windows":
             # Stop: Start'da saqlangan default qurilmalarni qaytaramiz.
-            # FON oqimida — bu yo'l jarayon tugaganda chaqiriladi va GUI
-            # ni bloklamasligi kerak.
-            self._win_restore_routing_async()
+            # Odatda FON oqimida (GUI qotmasin), LEKIN ilova yopilayotgan
+            # bo'lsa tugashini kutamiz — aks holda tiklash bajarilmay qoladi.
+            self._win_restore_routing_async(
+                blocking=bool(getattr(self, "quit_requested", False))
+            )
             return
         if platform.system() != "Darwin":
             return

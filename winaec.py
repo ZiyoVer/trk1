@@ -582,6 +582,11 @@ class WinAECCapture:
     # shuning uchun uzun bo'lmasligi kerak: 4s yetarli, aks holda
     # foydalanuvchining birinchi gapi yo'qoladi.
     FIRST_DATA_TIMEOUT = 9.0
+    # Exo-bekor qilish ishchisi sessiya O'RTASIDA o'lib qolsa — darhol
+    # Ctrl rejimiga tushmaymiz, avval QAYTA ISHGA TUSHIRAMIZ. Jonli
+    # nosozlik: "ishlab-ishlab, keyin Ctrl bosadigan holatga o'tib qoldi" —
+    # bir marta uzilish butun sessiyani Ctrl rejimida qoldirardi.
+    MAX_RESTARTS = 3
 
     def __init__(self, mic_device, speaker_name, deliver, on_fallback, log=print):  # noqa: ANN001
         self.mic_device = mic_device
@@ -592,6 +597,7 @@ class WinAECCapture:
         self.proc: subprocess.Popen | None = None
         self._stopped = False
         self._got_data = False
+        self._restarts = 0
         self._fb_capture = None
         self._fb_done = False
         self._threads: list[threading.Thread] = []
@@ -658,8 +664,30 @@ class WinAECCapture:
                 self.deliver(chunk)
         except Exception:
             pass
-        if not self._stopped:
-            self._fallback("worker oqimi uzildi")
+        if self._stopped:
+            return
+        if self._got_data and self._restarts < self.MAX_RESTARTS:
+            # AEC ishlayotgan edi va to'satdan uzildi (qurilma qo'zg'aldi,
+            # DMO xatosi). Ctrl rejimiga tushirmasdan qayta ko'taramiz.
+            self._restarts += 1
+            self.log(
+                f"[AEC] oqim uzildi — qayta ishga tushirilmoqda "
+                f"({self._restarts}/{self.MAX_RESTARTS})…"
+            )
+            self._restart_worker()
+            return
+        self._fallback("worker oqimi uzildi")
+
+    def _restart_worker(self) -> None:
+        self._kill_proc()
+        self._got_data = False
+        try:
+            self.proc = self._spawn()
+        except Exception as error:
+            self._fallback(f"qayta ishga tushmadi: {error}")
+            return
+        for target in (self._read_loop, self._err_loop, self._watchdog):
+            threading.Thread(target=target, daemon=True).start()
 
     def _err_loop(self) -> None:
         proc = self.proc
