@@ -1,5 +1,5 @@
 #define MyAppName "Live Translator"
-#define MyAppVersion "0.9.70"
+#define MyAppVersion "0.9.71"
 #define MyAppPublisher "Live Translator"
 #define MyAppExeName "Live Translator.exe"
 
@@ -25,6 +25,15 @@ Compression=lzma2
 SolidCompression=yes
 SetupIconFile=..\icon\AppIcon.ico
 WizardStyle=modern
+; HECH QANDAY TUGMA BOSILMAYDI: eski versiyadagi ilova o'rnatuvchini oddiy
+; (jim bo'lmagan) rejimda ochadi — shunda ham foydalanuvchi "Next/Install"
+; bosib o'tirmasin. Barcha sahifalar o'chirilgan: o'rnatuvchi ochiladi,
+; o'rnatadi va o'zi yopilib dasturni qayta ochadi.
+DisableWelcomePage=yes
+DisableDirPage=yes
+DisableProgramGroupPage=yes
+DisableReadyPage=yes
+DisableFinishedPage=yes
 ; Ilova admin talab qilmaydi (LocalAppData). Drayverni ILOVANING O'ZI
 ; birinchi ochilganda avtomatik o'rnatadi (bitta UAC). Installer [Run]
 ; orqali drayver o'rnatish ishonchsiz edi (elevated bo'lmagan sessiyada
@@ -54,10 +63,8 @@ Type: files; Name: "{app}\channel.txt"
 
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
-
-[Tasks]
-Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional icons:"
+; Yorliq har doim yaratiladi — "qo'shaymi?" degan savol sahifasi olib tashlandi.
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 
 [Run]
 ; `skipifsilent` OLIB TASHLANDI: ilova ichidagi avtomatik yangilanish
@@ -99,10 +106,20 @@ var
 begin
   Result := '';
 
-  { 1) Ishlab turgan dasturni (va dvigatel bolasini) majburan yopamiz }
-  Exec(ExpandConstant('{sys}\taskkill.exe'), '/IM "Live Translator.exe" /T /F',
+  { 1) Ishlab turgan dasturni (va dvigatel bolasini) majburan yopamiz.
+
+       DIQQAT — bu yerda `/T` BO'LMASLIGI SHART. Ilgari `/T` bor edi va u
+       jarayonni BUTUN DARAXTI bilan o'ldirardi. Yangilanishda o'rnatuvchi
+       ilovaning bola jarayoni bo'lib ishga tushadi — ya'ni `/T` bilan
+       o'rnatuvchi O'Z-O'ZINI o'ldirardi va yangilanish hech qachon
+       tugamasdi ("update qayta-qayta qilsam ham bo'lmayapti").
+
+       `/T` kerak ham emas: dvigatel va AEC bola jarayonlari ham AYNAN
+       shu nomdagi exe (PyInstaller `sys.executable`), demak `/IM` ularni
+       nomi bo'yicha baribir yopadi. }
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/IM "Live Translator.exe" /F',
        '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-  Sleep(1200);
+  Sleep(1500);
 
   { 2) Eski versiyani jim o'chiramiz (bo'lsa). Xato bo'lsa ham davom etamiz:
        o'chirilmasa ham o'rnatish odatdagidek ustiga yozadi. }

@@ -174,7 +174,7 @@ from system_audio import (
 
 
 APP_NAME = "Live Translator"
-APP_VERSION = "0.9.70"
+APP_VERSION = "0.9.71"
 
 
 def _read_channel() -> str:

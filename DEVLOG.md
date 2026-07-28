@@ -178,3 +178,57 @@ Tashxis tartibi (suhbatdosh eshitmasa):
 2. Windows → Звук → Запись → CABLE Output daraja ko'rsatkichi gapirganda
    harakatlanadimi (harakatlansa — kabel ishlayapti, muammo Meet tomonda).
 3. Drayver yangi o'rnatilgan bo'lsa — kompyuterni qayta yoqing.
+
+## v0.9.69–0.9.71 — ovoz qaytmasligi va yangilanish (2026-07-28)
+
+### 1. «To'xtatsam kompyuterning ovozi umuman chiqmay qoladi»
+
+Ildiz sabab (0.9.65 da kiritilgan xato): `_restore_routing_worker` fon
+oqimda `_routing_lock` ni oladi, keyin xato bilan `_win_restore_routing_`
+`async()` — ya'ni O'ZINI chaqirardi. Yangi oqim o'sha qulfni kutib abadiy
+qotardi va qurilmalar UMUMAN tiklanmasdi. Logdagi belgisi: `startduplex`
+bor, `stopduplex` YO'Q.
+
+Tuzatish: haqiqiy `_win_restore_routing()` chaqiriladi + natija
+TEKSHIRILADI (default chiqish hali ham virtual kabel bo'lsa 3 martagacha
+qayta urinadi). `win_prev_*` faqat muvaffaqiyatdan keyin tozalanadi.
+
+### 2. «Update qayta-qayta qilsam ham bo'lmayapti»
+
+Ildiz sabab (ikkita, ikkalasi ham tuzatildi):
+
+1. O'rnatuvchi ilovaning BOLA jarayoni bo'lib ochilardi, o'rnatuvchi ichidagi
+   `taskkill /IM "Live Translator.exe" /T /F` esa `/T` tufayli butun
+   daraxtni — o'rnatuvchining O'ZINI ham — o'ldirardi. `/T` olib tashlandi
+   (kerak ham emas: dvigatel/AEC bolalari ham shu nomdagi exe, `/IM` ularni
+   nomi bo'yicha yopadi). Bu tuzatish YANGI O'RNATUVCHI ichida ketadi —
+   demak eski 0.9.68 dagi ilova ham endi o'zini yangilay oladi.
+2. Sehrgar sahifalari o'chirildi (`DisableWelcomePage` … `DisableFinished`
+   `Page`) — o'rnatuvchi jim bo'lmagan rejimda ochilsa ham hech qanday tugma
+   bosilmaydi. Ish stoli yorlig'i endi doim yaratiladi.
+
+Yangi ilova esa o'rnatuvchini butunlay AJRATIB (DETACHED .cmd, 3 s kutish)
+ishga tushiradi va o'zi toza yopiladi — fayllar qulfdan bo'shaydi.
+
+### 3. Monitor uchun alohida oqim — «aralashtirma»
+
+Bitta koddan ikkita o'rnatuvchi:
+
+| Fayl | Kim uchun | Oqim |
+| --- | --- | --- |
+| `LiveTranslator-Setup-x.y.z.exe` | boshliq, hamkasblar | barqaror |
+| `LiveTranslator-OPS-Setup-x.y.z.exe` | monitorli sinov mashinasi | `ops` |
+
+Farqi faqat `{app}\channel.txt` (OPS o'rnatuvchi yozadi, barqaror
+`[InstallDelete]` bilan o'chiradi). Ilova `/update?channel=ops` so'raydi,
+server `LT_OPS_VERSION`/`LT_OPS_URL` dan javob beradi; ular bo'sh bo'lsa
+barqarorga qaytadi. Tray menyusi va logda `0.9.71 · Windows OPS` ko'rinadi.
+
+Yangi sinov versiyasini FAQAT monitorga chiqarish:
+```
+railway variables --set LT_OPS_VERSION=x.y.z --set LT_OPS_URL=<OPS exe>
+```
+Barqarorga ko'chirish (ishonch hosil qilgandan keyin):
+```
+railway variables --set LT_LATEST_VERSION=x.y.z --set LT_LATEST_URL=<oddiy exe>
+```
