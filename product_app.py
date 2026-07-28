@@ -175,7 +175,7 @@ from system_audio import (
 
 
 APP_NAME = "Live Translator"
-APP_VERSION = "0.9.72"
+APP_VERSION = "0.9.73"
 
 
 def _read_channel() -> str:
@@ -516,7 +516,7 @@ class TranslatorWindow(QWidget):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle(APP_NAME)
-        self.setFixedSize(640, 558)
+        self.setFixedSize(640, 596)
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
             | Qt.WindowType.WindowStaysOnTopHint
@@ -580,6 +580,9 @@ class TranslatorWindow(QWidget):
         self.meeting_uz = (
             str(self.settings.value("translation/meeting_uz", "false")).lower() == "true"
         )
+        # Navbat ko'rsatkichi holati (dvigatelning [STATE] satrlaridan).
+        self.turn_states: dict[str, str] = {}
+        self._last_turn_active = ""
         self.mode_pairs = {
             mode.code: normalize_pair(
                 mode.code,
@@ -825,6 +828,19 @@ class TranslatorWindow(QWidget):
         self.meeting_uz_check.setChecked(self.meeting_uz)
         self.meeting_uz_check.toggled.connect(self._toggle_meeting_uz)
         layout.addWidget(self.meeting_uz_check)
+
+        # NAVBAT KO'RSATKICHI. Foydalanuvchi shikoyati: "men gapiryapman, u
+        # gapiryapti … orada ikkalamiz ham gapdan to'xtayapmiz". Sabab —
+        # gapirib bo'lgach tarjima yetib borganini bilish imkoni yo'q edi.
+        # Dvigatel buni biladi ([STATE] satrlari), endi ekranda ko'rinadi.
+        self.turn_label = QLabel("")
+        self.turn_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.turn_label.setStyleSheet(
+            "color: #e2e8f0; font-size: 13px; font-weight: 700; "
+            "background: #1e293b; border-radius: 8px; padding: 7px;"
+        )
+        self.turn_label.setVisible(False)
+        layout.addWidget(self.turn_label)
 
         # === Eski til-widgetlari: YASHIRIN. Mavjud ichki logika (mode_pairs,
         # ishga tushirish) shular orqali ishlaydi; foydalanuvchi esa
@@ -1350,18 +1366,83 @@ class TranslatorWindow(QWidget):
             self._set_status("LOGLARNI SAQLAB BO‘LMADI", "#ef4444")
             self.route_hint.setText(str(error)[:180])
 
+    def _write_engine_command(self, **values: object) -> None:
+        """Dvigatelga buyruq yozadi (mavjud `devices.json` kanali orqali).
+
+        MUHIM: fayl ustiga yozilmaydi, BIRLASHTIRILADI — aks holda qurilma
+        almashtirish buyrug'i pauza buyrug'ini o'chirib yuborardi."""
+        try:
+            current: dict = {}
+            if self.device_state_path.exists():
+                with suppress(Exception):
+                    current = json.loads(
+                        self.device_state_path.read_text(encoding="utf-8")
+                    )
+            if not isinstance(current, dict):
+                current = {}
+            current.update(values)
+            self.device_state_path.parent.mkdir(parents=True, exist_ok=True)
+            self.device_state_path.write_text(
+                json.dumps(current), encoding="utf-8"
+            )
+        except OSError as error:
+            print(f"[UI] buyruq yozilmadi: {error}", flush=True)
+
+    def _apply_meeting_uz_live(self, enabled: bool) -> None:
+        """Rejimni JONLI almashtiradi — dasturni to'xtatmasdan.
+
+        Ilgari buning uchun Stop→Start kerak edi = 7-10 soniya jimlik
+        (ulanishning o'zi ~6 s). Endi faqat kiruvchi kanal to'xtaydi;
+        chiquvchi kanal — sizning gapingiz tarjimasi — UZILMAYDI."""
+        self._write_engine_command(incoming_paused=bool(enabled))
+        if platform.system() != "Windows":
+            return
+        cable = getattr(self, "win_incoming_cable_match", "")
+        target = "" if enabled else cable
+        # PowerShell ~2 soniya oladi — GUI oqimida chaqirilsa ilova qotardi
+        # (0.9.63 dagi jonli nosozlik). Fon oqimida bajaramiz.
+        threading.Thread(
+            target=self._meeting_uz_routing_worker,
+            args=(enabled, target),
+            daemon=True,
+        ).start()
+
+    def _meeting_uz_routing_worker(self, enabled: bool, cable: str) -> None:
+        """Tizim CHIQISHINI almashtiradi (mikrofonga tegilmaydi)."""
+        with self._routing_lock:
+            if enabled:
+                # Meeting ovozi kabelga emas, KARNAYGA qaytadi.
+                wanted = ""
+                for candidate in (
+                    getattr(self, "preferred_output_name", ""),
+                    getattr(self, "win_prev_render", ""),
+                ):
+                    if candidate and not is_virtual_device(candidate):
+                        wanted = candidate
+                        break
+                out = (
+                    self._win_audio("setrender", wanted)
+                    if wanted
+                    else self._win_audio("restorerender")
+                )
+                print(f"[ROUTING] meeting o'zbekcha: chiqish -> {out.strip()!r}", flush=True)
+            elif cable:
+                out = self._win_audio("setrender", cable)
+                print(f"[ROUTING] tarjima qaytdi: chiqish -> {out.strip()!r}", flush=True)
+
     def _toggle_meeting_uz(self, enabled: bool) -> None:
         """«Meeting o'zbekcha» belgisi (oyna va tray bir-biriga mos turadi)."""
         if enabled == getattr(self, "meeting_uz", False):
             return
-        if self.process is not None:
-            # Rejim almashuvi audio yo'llarini qayta quradi — jonli tarjimani
-            # jimgina uzib yubormaymiz (rejim tanlash bilan bir xil qoida).
+        if self.process is not None and not getattr(self, "engine_has_incoming", False):
+            # Dastur allaqachon FAQAT-GAPIRISH rejimida ishga tushgan —
+            # kiruvchi kanal umuman ochilmagan, uni yo'ldan qo'shib
+            # bo'lmaydi. Bu yagona holat: Stop → Start kerak.
             self._sync_meeting_uz_widgets()
             if self.tray is not None:
                 self.tray.showMessage(
                     APP_NAME,
-                    t("Rejimni almashtirish uchun avval tarjimani to‘xtating."),
+                    "Kiruvchi tarjimani yoqish uchun tarjimani qayta ishga tushiring.",
                     QSystemTrayIcon.MessageIcon.Information,
                     4000,
                 )
@@ -1371,6 +1452,20 @@ class TranslatorWindow(QWidget):
         self.settings.sync()
         self._sync_meeting_uz_widgets()
         print(f"[UI] Meeting o'zbekcha: {'YOQILDI' if enabled else 'o‘chirildi'}", flush=True)
+        if self.process is not None:
+            # JONLI almashtirish: dastur to'xtamaydi, gapingiz tarjimasi
+            # uzilmaydi. Oynadagi panellarni ham qayta chizmaymiz —
+            # meeting o'rtasida interfeys sakrab ketmasin.
+            self._apply_meeting_uz_live(enabled)
+            self.turn_states["INCOMING"] = "idle"
+            self.route_hint.setText(
+                "🔊 Meeting o‘zbekcha: hammani jonli eshityapsiz. Gapingiz "
+                "tarjimasi avvalgidek ketmoqda."
+                if enabled
+                else "🎧 Kiruvchi tarjima qayta yoqildi (bir necha soniya)."
+            )
+            self.route_hint.setVisible(True)
+            return
         # Qurilmalar yangi rejimga moslanadi: gapirishda kirish = FIZIK
         # mikrofon, chiqish = virtual kabel (ikki tomonlamada aksincha).
         self._sync_mode_ui(apply_devices=True)
@@ -2602,8 +2697,8 @@ class TranslatorWindow(QWidget):
         self.duplex_outgoing_audio_panel.setVisible(False)
         self.duplex_outgoing_caption_panel.setVisible(duplex)
         self.language_label.setText("Tillar")
-        # 530 → 558: «Meeting o'zbekcha» belgisi uchun bitta qator qo'shildi.
-        self.setFixedSize(640, 558)
+        # 530 → 596: «Meeting o'zbekcha» belgisi va navbat ko'rsatkichi.
+        self.setFixedSize(640, 596)
         self._sync_meeting_uz_widgets()
         self._reset_captions()
         if apply_devices:
@@ -3141,6 +3236,15 @@ class TranslatorWindow(QWidget):
 
     def _launch_translator(self) -> None:
         mode = self._current_mode()
+        # Kiruvchi kanal shu ishga tushirishda ochiladimi. Jonli almashtirish
+        # faqat ochilgan kanalni to'xtata oladi — yo'q kanalni yo'ldan
+        # qo'shib bo'lmaydi (u holda Stop→Start kerak).
+        self.engine_has_incoming = mode == "duplex"
+        self.turn_states = {}
+        self._last_turn_active = ""
+        # Har ishga tushirishda eski buyruqlar tozalanadi (aks holda o'tgan
+        # sessiyadagi `incoming_paused` yangi sessiyani darhol to'xtatardi).
+        self.device_state_path.unlink(missing_ok=True)
         process_arguments = ["--voice", "Charon"]
         control_sessions: list[tuple[str, str, str, str, str]] = []
         try:
@@ -3162,8 +3266,15 @@ class TranslatorWindow(QWidget):
                     )
                 elif platform.system() == "Windows":
                     # Zoom speaker -> kiruvchi kabel; Zoom mic -> chiquvchi kabel.
+                    # Kiruvchi kabel nomi SAQLANADI: «Meeting o'zbekcha» ni
+                    # jonli o'chirib-yoqqanda chiqishni shu kabelga qaytarish
+                    # kerak bo'ladi (qayta hisoblash uchun qurilma ro'yxatini
+                    # o'qish kerak edi — meeting o'rtasida qimmat).
+                    self.win_incoming_cable_match = self._win_cable_match(
+                        routes.incoming_input.name
+                    )
                     self._win_apply_routing(
-                        self._win_cable_match(routes.incoming_input.name),
+                        self.win_incoming_cable_match,
                         self._win_cable_match(routes.outgoing_output.name),
                     )
                     # Incoming tarjima (UZ) foydalanuvchi AYNAN ESHITAYOTGAN
@@ -3588,6 +3699,42 @@ class TranslatorWindow(QWidget):
             return
         self.process.readAllStandardOutput()
 
+    def _update_turn_state(self, channel: str, state: str) -> None:
+        """Dvigatel yuborgan holatni NAVBAT ko'rsatkichiga aylantiradi.
+
+        Nima uchun kerak: tarjima kechikkani uchun ikki tomon bir-birini
+        kutib, keyin bir vaqtda gapirib yuborardi. Endi qachon gapirish
+        mumkinligi ekranda (va tray'da) turadi."""
+        if state in {"paused", "resumed"}:
+            print(f"[UI] kiruvchi kanal: {state}", flush=True)
+            return
+        self.turn_states[channel or "OUTGOING"] = state
+        outgoing = self.turn_states.get("OUTGOING", "idle")
+        incoming = self.turn_states.get("INCOMING", "idle")
+        if outgoing == "delivering":
+            # Sizning gapingiz tarjimasi hozir kabelga (Zoomga) oqmoqda.
+            text, colour = "📤 Tarjimangiz yetkazilmoqda…", "#f59e0b"
+        elif incoming == "delivering":
+            text, colour = "🎧 Suhbatdosh gapirmoqda — kuting", "#38bdf8"
+        elif self._last_turn_active == "OUTGOING":
+            text, colour = "✅ Yetkazildi — javobni kuting", "#22c55e"
+        else:
+            text, colour = "🎤 Gapirishingiz mumkin", "#94a3b8"
+        if outgoing == "delivering":
+            self._last_turn_active = "OUTGOING"
+        elif incoming == "delivering":
+            self._last_turn_active = "INCOMING"
+        self.turn_label.setText(text)
+        self.turn_label.setStyleSheet(
+            f"color: {colour}; font-size: 13px; font-weight: 700; "
+            "background: #1e293b; border-radius: 8px; padding: 7px;"
+        )
+        self.turn_label.setVisible(True)
+        # Oyna kichraytirilgan bo'lsa foydalanuvchi tray'dan boshqaradi —
+        # holat o'sha yerda ham ko'rinsin.
+        if self.tray is not None:
+            self.tray.setToolTip(f"{APP_NAME} — {text}")
+
     def _read_engine_log(self) -> None:
         try:
             size = self.engine_log_path.stat().st_size
@@ -3619,6 +3766,9 @@ class TranslatorWindow(QWidget):
             if candidate in {"INCOMING", "OUTGOING"}:
                 channel = candidate
                 line = remainder
+        if line.startswith("[STATE] "):
+            self._update_turn_state(channel, line.removeprefix("[STATE] ").strip())
+            return
         if line.startswith("Xato:"):
             self.last_engine_error = line.removeprefix("Xato:").strip()
             return
@@ -3743,6 +3893,13 @@ class TranslatorWindow(QWidget):
         self.heartbeat_timer.stop()
         self.heartbeat_in_progress = False
         self._read_engine_log()
+        # Navbat ko'rsatkichi tarjima tugagach qotib qolmasin.
+        self.turn_states = {}
+        self._last_turn_active = ""
+        if getattr(self, "turn_label", None) is not None:
+            self.turn_label.setVisible(False)
+        if self.tray is not None:
+            self.tray.setToolTip(APP_NAME)
         process = self.process
         if process:
             process.readAllStandardOutput()
@@ -4181,10 +4338,9 @@ class TranslatorWindow(QWidget):
         if not desired:
             return
         try:
-            self.device_state_path.parent.mkdir(parents=True, exist_ok=True)
-            self.device_state_path.write_text(
-                json.dumps({"output": desired}), encoding="utf-8"
-            )
+            # BIRLASHTIRIB yozamiz: to'g'ridan-to'g'ri yozsak `incoming_paused`
+            # buyrug'i o'chib, «Meeting o'zbekcha» o'z-o'zidan qaytib qolardi.
+            self._write_engine_command(output=desired)
         except OSError:
             return
         self._set_status("AUDIO QURILMA ALMASHDI", "#f59e0b")

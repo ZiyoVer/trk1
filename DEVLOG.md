@@ -366,3 +366,58 @@ Ixtiyoriy (tarjima ovozi g'alati eshitilsa): Zoomdagi «Автоматическ
 регулировать громкость микрофона» ni o'chirish yoki «Звук оригинала для
 музыкантов» ni yoqish — kabelda shovqin ham, aks-sado ham yo'q, Zoom
 filtrlari u yerda faqat zarar qiladi.
+
+## v0.9.73 — Navbat ko'rsatkichi + jonli rejim almashtirish (Bosqich 1)
+
+Foydalanuvchi: «navbatni qo'yishimiz kerak … latency shundoq ham yomon,
+orada ikkalamiz ham gapdan to'xtayapmiz» va «rejimni almashtirsam ham
+7-10 sekund ketadimi».
+
+### 1. Navbat ko'rsatkichi
+
+Ildiz sabab: gapirib bo'lgach tarjima YETIB BORGANINI bilish imkoni yo'q
+edi. Odam kutadi, «javob bermadi» deb yana gapiradi va aynan o'sha payt
+javob keladi — to'qnashuv. Dvigatel holatni **biladi**
+(`AudioPlayer.has_audio()`), lekin oynaga aytmasdi.
+
+Endi `Translator._watch_state()` har 200 ms tekshiradi va FAQAT o'zgarganda
+bitta qator yozadi: `[STATE] delivering|idle`. Oyna uni
+`_handle_line` da ushlab, katta ko'rsatkichga aylantiradi:
+
+| Holat | Ko'rsatkich |
+| --- | --- |
+| Chiquvchi ijro ketyapti | 📤 Tarjimangiz yetkazilmoqda… |
+| Chiquvchi tugadi | ✅ Yetkazildi — javobni kuting |
+| Kiruvchi ijro ketyapti | 🎧 Suhbatdosh gapirmoqda — kuting |
+| Ikkalasi jim | 🎤 Gapirishingiz mumkin |
+
+Tray tooltip'ida ham shu matn — oyna kichraytirilgan holatda ham ko'rinadi.
+
+### 2. Rejimni jonli almashtirish (7-10 s → ~1 s)
+
+Ilgari «Meeting o'zbekcha» ni almashtirish uchun Stop→Start kerak edi
+(ulanishning o'zi ~6 s). Endi **mavjud** `devices.json` kanali orqali
+(`product_app.py` yozadi, `translator.py` o'qiydi) `incoming_paused`
+buyrug'i yuboriladi:
+
+- dvigatel kiruvchi kanal sessiyasini yopadi (`pause_event` `_session`
+  dagi `asyncio.wait` to'plamiga qo'shildi — audio darhol to'xtaydi, ya'ni
+  pul ham ketmaydi);
+- oyna tizim CHIQISHINI fizik qurilmaga qaytaradi (fon oqimida —
+  PowerShell GUI'ni qotirmasin);
+- **chiquvchi kanalga tegilmaydi** — sizning gapingiz tarjimasi uzilmaydi.
+
+Buyruq fayli endi BIRLASHTIRIB yoziladi (`_write_engine_command`) — aks
+holda qurilma almashtirish buyrug'i pauzani o'chirib yuborardi.
+
+Yagona cheklov: dastur «Meeting o'zbekcha» YOQIQ holda ishga tushirilgan
+bo'lsa kiruvchi kanal umuman ochilmagan bo'ladi — uni yo'ldan qo'shib
+bo'lmaydi, Stop→Start kerak (ekranda aytiladi).
+
+### Tekshirildi
+
+- Dvigatel: haqiqiy fayl bilan — `[STATE] idle → delivering → idle`,
+  `paused`/`resumed` o'qildi, `output` kaliti buzilmadi.
+- Oyna: to'rt bosqichli suhbat aylanasi to'g'ri ko'rsatkich berdi;
+  `devices.json` ikkala kalitni ham saqladi.
+- 70 test o'tdi.

@@ -332,6 +332,9 @@ class Translator:
         self.channel = channel.strip().upper()
         self.loop = asyncio.get_running_loop()
         self.stop_event = asyncio.Event()
+        # «Meeting o'zbekcha» — kiruvchi kanalni butun dasturni to'xtatmasdan
+        # vaqtincha o'chirish uchun. Faqat INCOMING kanalda ishlatiladi.
+        self.pause_event = asyncio.Event()
         # Keep latency bounded: when the network falls behind, discard the
         # oldest PCM rather than playing a stale translation seconds later.
         self.audio_queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=25)
@@ -398,6 +401,53 @@ class Translator:
         # yo'q: chiqish tili = target, echo_target_language=False bo'lgani
         # uchun model o'z tilidagi nutqqa javob bermaydi.
 
+    # === NAVBAT (turn-taking) va VAQTINCHA O'CHIRISH ===
+    # Foydalanuvchi shikoyati: "men gapiryapman, u gapiryapti, latency
+    # yomon — orada ikkalamiz ham gapdan to'xtayapmiz". Sabab: gapirib
+    # bo'lgach tarjima YETIB BORGANINI bilish imkoni yo'q edi. Dvigatel
+    # buni biladi (ijro tugadimi), lekin oynaga aytmasdi. Endi aytadi.
+    STATE_POLL_SECONDS = 0.2
+
+    async def _watch_state(self) -> None:
+        """Ijro holatini oynaga bildiradi (faqat O'ZGARGANDA yoziladi)."""
+        state = ""
+        while not self.stop_event.is_set():
+            current = "delivering" if self.player.has_audio() else "idle"
+            if current != state:
+                state = current
+                self._log(f"[STATE] {current}")
+            with suppress(TimeoutError, asyncio.TimeoutError):
+                await asyncio.wait_for(
+                    self.stop_event.wait(), timeout=self.STATE_POLL_SECONDS
+                )
+
+    async def _watch_pause_command(self) -> None:
+        """Oyna «Meeting o'zbekcha» ni yoqsa kiruvchi kanalni to'xtatadi.
+
+        Nima uchun: rejimni almashtirish uchun butun dasturni Stop→Start
+        qilish 7-10 soniya jimlik degani edi (ulanish ~6 s). Endi FAQAT
+        kiruvchi kanal to'xtaydi/qayta ulanadi — chiquvchi kanal (sizning
+        gapingiz tarjimasi) UZILMAYDI."""
+        while not self.stop_event.is_set():
+            paused = self._requested_flag("incoming_paused")
+            if paused != self.pause_event.is_set():
+                if paused:
+                    self.pause_event.set()
+                    self._log("[STATE] paused")
+                else:
+                    self.pause_event.clear()
+                    self._log("[STATE] resumed")
+            with suppress(TimeoutError, asyncio.TimeoutError):
+                await asyncio.wait_for(self.stop_event.wait(), timeout=0.5)
+
+    async def _idle_while_paused(self) -> None:
+        """Pauza tugashini kutamiz (Gemini sessiyasi yopiq — pul ketmaydi)."""
+        self.player.clear()
+        self._clear_audio_queue()
+        while self.pause_event.is_set() and not self.stop_event.is_set():
+            with suppress(TimeoutError, asyncio.TimeoutError):
+                await asyncio.wait_for(self.stop_event.wait(), timeout=0.3)
+
     def _log(self, message: str) -> None:
         # VAQT TAMG'ASI: logda vaqt bo'lmagani uchun "ovoz qachon to'xtadi",
         # "qancha jimlik bo'ldi" kabi savollarga javob topib bo'lmasdi
@@ -448,9 +498,21 @@ class Translator:
         self.capture.start()
         self.started_at = time.monotonic()
         device_watcher = asyncio.create_task(self._watch_output_device())
+        state_watcher = asyncio.create_task(self._watch_state())
+        pause_watcher = (
+            asyncio.create_task(self._watch_pause_command())
+            if self.channel == "INCOMING"
+            else None
+        )
         delay = 1.0
         try:
             while not self.stop_event.is_set():
+                if self.pause_event.is_set():
+                    # «Meeting o'zbekcha»: sessiya yopiq turadi (pul ketmaydi),
+                    # meeting ovozi karnaydan jonli eshitiladi.
+                    await self._idle_while_paused()
+                    delay = 1.0
+                    continue
                 try:
                     await self._session(api_key)
                     delay = 1.0
@@ -474,9 +536,12 @@ class Translator:
                         pass
                     delay = min(delay * 2, 15.0)
         finally:
-            device_watcher.cancel()
-            with suppress(asyncio.CancelledError):
-                await device_watcher
+            for task in (device_watcher, state_watcher, pause_watcher):
+                if task is None:
+                    continue
+                task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await task
             self.capture.stop()
             # To'xtashda qoldiq tarjimani oxirigacha ijro qilib o'tirmaymiz —
             # duplex'da ikki player'ning to'liq drain'i 6s dan oshib, GUI
@@ -514,6 +579,10 @@ class Translator:
             sender = asyncio.create_task(self._send_google_audio(session))
             receiver = asyncio.create_task(self._receive_google_audio(session))
             stop_watcher = asyncio.create_task(self.stop_event.wait())
+            # Pauza so'ralsa sessiyani DARHOL yopamiz — aks holda «Meeting
+            # o'zbekcha» yoqilgach ham Gemini'ga audio ketaverib, pul
+            # yeyaverardi.
+            pause_watcher = asyncio.create_task(self.pause_event.wait())
             timer = (
                 asyncio.create_task(self._stop_after(self.args.max_seconds))
                 if self.args.max_seconds
@@ -521,7 +590,7 @@ class Translator:
             )
             try:
                 done, _ = await asyncio.wait(
-                    {sender, receiver, stop_watcher},
+                    {sender, receiver, stop_watcher, pause_watcher},
                     return_when=asyncio.FIRST_COMPLETED,
                 )
                 if sender in done:
@@ -529,9 +598,9 @@ class Translator:
                 if receiver in done:
                     await receiver
             finally:
-                for task in (sender, receiver, stop_watcher):
+                for task in (sender, receiver, stop_watcher, pause_watcher):
                     task.cancel()
-                for task in (sender, receiver, stop_watcher):
+                for task in (sender, receiver, stop_watcher, pause_watcher):
                     with suppress(asyncio.CancelledError):
                         await task
                 if timer:
@@ -695,21 +764,28 @@ class Translator:
         await self._reopen_audio(self.output_device.name)
         self._log("Audio oqimi qayta ochildi.")
 
-    def _requested_output_name(self) -> str:
-        """GUI yozib qo'ygan chiqish qurilmasi nomi (Windows yo'li).
+    def _read_gui_state(self) -> dict:
+        """Oyna yozib qo'ygan boshqaruv fayli (mavjud kanal, kengaytirildi).
 
         Windows'da PortAudio yangi qurilmani jarayon ichida ko'rmaydi —
         GUI (unda ochiq audio oqim yo'q) ro'yxatni yangilab, kerakli
-        qurilma nomini shu faylga yozadi.
-        """
+        qurilma nomini shu faylga yozadi. Endi shu fayl orqali «Meeting
+        o'zbekcha» buyrug'i ham keladi — yangi kanal ochilmadi."""
         path = os.getenv("LIVE_TRANSLATOR_DEVICE_STATE", "").strip()
         if not path:
-            return ""
+            return {}
         try:
             with open(path, encoding="utf-8") as handle:
-                return str(json.load(handle).get("output", "")).strip()
+                data = json.load(handle)
         except Exception:
-            return ""
+            return {}
+        return data if isinstance(data, dict) else {}
+
+    def _requested_output_name(self) -> str:
+        return str(self._read_gui_state().get("output", "")).strip()
+
+    def _requested_flag(self, name: str) -> bool:
+        return bool(self._read_gui_state().get(name, False))
 
     async def _reopen_audio(self, output_name: str) -> None:
         """Oqimlarni Gemini sessiyasini uzmasdan yangi qurilmada qayta ochadi.
