@@ -175,7 +175,13 @@ from system_audio import (
 
 
 APP_NAME = "Live Translator"
-APP_VERSION = "0.9.73"
+CHECKBOX_STYLE = (
+    "QCheckBox { color: #9fb0c6; font-size: 11px; font-weight: 600; spacing: 7px; } "
+    "QCheckBox::indicator { width: 13px; height: 13px; border-radius: 4px; "
+    "border: 1px solid #33456080; background: #131e30; } "
+    "QCheckBox::indicator:checked { background: #15845a; border-color: #15845a; }"
+)
+APP_VERSION = "0.9.74"
 
 
 def _read_channel() -> str:
@@ -516,7 +522,7 @@ class TranslatorWindow(QWidget):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle(APP_NAME)
-        self.setFixedSize(640, 596)
+        self.setFixedSize(640, 552)
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
             | Qt.WindowType.WindowStaysOnTopHint
@@ -579,6 +585,11 @@ class TranslatorWindow(QWidget):
         # tarjima bo'lib meetingga boradi.
         self.meeting_uz = (
             str(self.settings.value("translation/meeting_uz", "false")).lower() == "true"
+        )
+        # «Sifatli tarjima»: gap tugashini kutib, TO'LIQ gapni tarjima qiladi
+        # (sinxron model bo'lak-bo'lak tarjima qilib ma'noni buzardi).
+        self.quality_mode = (
+            str(self.settings.value("translation/quality", "false")).lower() == "true"
         )
         # Navbat ko'rsatkichi holati (dvigatelning [STATE] satrlaridan).
         self.turn_states: dict[str, str] = {}
@@ -741,6 +752,9 @@ class TranslatorWindow(QWidget):
         driver_layout.addWidget(self.driver_label, 1)
         driver_layout.addWidget(self.driver_button)
         self.driver_row.setStyleSheet("background: rgba(180, 83, 9, 85); border-radius: 8px;")
+        # Drayver skani FON oqimida ketadi; tugagunча bu qator bo'sh turib,
+        # oynaning tepasida sababsiz bo'shliq hosil qilardi.
+        self.driver_row.setVisible(False)
         layout.addWidget(self.driver_row)
 
         direction_label = QLabel("Tarjima rejimi")
@@ -767,7 +781,6 @@ class TranslatorWindow(QWidget):
         # === TILLAR — sodda panel (faqat ikki tomonlama) ===
         self.language_label = QLabel("Tillar")
         self.language_label.setStyleSheet("color: #98a8bd; font-size: 11px; font-weight: 650;")
-        layout.addWidget(self.language_label)
 
         simple_row = QHBoxLayout()
         simple_row.setSpacing(8)
@@ -822,12 +835,24 @@ class TranslatorWindow(QWidget):
             "eshitiladi.\nSizning gapingiz esa avvalgidek tarjima bo‘lib "
             "meetingga boradi."
         )
-        self.meeting_uz_check.setStyleSheet(
-            "color: #cbd5e1; font-size: 11px; font-weight: 600;"
-        )
+        self.meeting_uz_check.setStyleSheet(CHECKBOX_STYLE)
         self.meeting_uz_check.setChecked(self.meeting_uz)
         self.meeting_uz_check.toggled.connect(self._toggle_meeting_uz)
         layout.addWidget(self.meeting_uz_check)
+
+        self.quality_check = QCheckBox(
+            "Sifatli tarjima — gapni oxirigacha kutib, tabiiy o‘giradi"
+        )
+        self.quality_check.setToolTip(
+            "Yoqilganda dastur gap tugashini kutadi va TO‘LIQ gapni "
+            "tarjima qiladi.\nMa’no ancha to‘g‘ri chiqadi, lekin gap "
+            "tugagandan keyin 1-2 soniya kechikadi.\nO‘chiq bo‘lsa "
+            "hozirgidek: tezroq, lekin bo‘lak-bo‘lak."
+        )
+        self.quality_check.setStyleSheet(CHECKBOX_STYLE)
+        self.quality_check.setChecked(self.quality_mode)
+        self.quality_check.toggled.connect(self._toggle_quality)
+        layout.addWidget(self.quality_check)
 
         # NAVBAT KO'RSATKICHI. Foydalanuvchi shikoyati: "men gapiryapman, u
         # gapiryapti … orada ikkalamiz ham gapdan to'xtayapmiz". Sabab —
@@ -836,8 +861,8 @@ class TranslatorWindow(QWidget):
         self.turn_label = QLabel("")
         self.turn_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.turn_label.setStyleSheet(
-            "color: #e2e8f0; font-size: 13px; font-weight: 700; "
-            "background: #1e293b; border-radius: 8px; padding: 7px;"
+            "color: #cbd5e1; font-size: 12px; font-weight: 600; "
+            "background: #131e30; border-radius: 8px; padding: 6px;"
         )
         self.turn_label.setVisible(False)
         layout.addWidget(self.turn_label)
@@ -972,7 +997,9 @@ class TranslatorWindow(QWidget):
             "color: #ffd166; font-size: 11px; font-weight: 600;"
         )
         self.route_hint.setVisible(False)
-        layout.addWidget(self.route_hint)
+        # EKRANGA QO'SHILMAYDI: foydalanuvchi ogohlantirish yozuvlarini olib
+        # tashlashni so'radi. Ob'ekt saqlanadi (kodning ko'p joyida matn
+        # yoziladi) — endi u faqat ichki holat, ekranda ko'rinmaydi.
 
         # Meet/Zoom'da qaysi mikrofon tanlanishi kerakligi — eng ko'p
         # uchraydigan nosozlik shu (suhbatdosh hech narsa eshitmaydi).
@@ -982,7 +1009,7 @@ class TranslatorWindow(QWidget):
             "color: #7dd3fc; font-size: 11px; font-weight: 600;"
         )
         self.meet_mic_hint.setVisible(False)
-        layout.addWidget(self.meet_mic_hint)
+        # Bu ham ekranga qo'shilmaydi (yuqoridagi sabab).
 
         # Yangilanish xabari va tugmasi (yordam serveridan bilinadi).
         self.update_hint = QLabel("")
@@ -1015,11 +1042,11 @@ class TranslatorWindow(QWidget):
         caption_layout.addWidget(self.source_text)
 
         self.target_language = QLabel("Tarjima  ·  O‘ZBEKCHA")
-        self.target_language.setStyleSheet("color: #42d884; font-size: 9px; font-weight: 800;")
+        self.target_language.setStyleSheet("color: #94a3b8; font-size: 9px; font-weight: 700;")
         self.target_text = QLabel("Tarjima shu yerda chiqadi…")
         self.target_text.setWordWrap(True)
         self.target_text.setMinimumHeight(38)
-        self.target_text.setStyleSheet("color: #e2faec; font-size: 15px; font-weight: 700;")
+        self.target_text.setStyleSheet("color: #f1f5f9; font-size: 15px; font-weight: 650;")
         caption_layout.addWidget(self.target_language)
         caption_layout.addWidget(self.target_text)
         layout.addWidget(self.caption_panel)
@@ -1027,14 +1054,14 @@ class TranslatorWindow(QWidget):
         self.duplex_outgoing_caption_panel = QFrame()
         self.duplex_outgoing_caption_panel.setObjectName("duplexCaption")
         self.duplex_outgoing_caption_panel.setStyleSheet(
-            "QFrame#duplexCaption { background: rgba(37, 99, 235, 35); border-radius: 8px; }"
+            "QFrame#duplexCaption { background: #0f1a2a; border-radius: 11px; }"
         )
         duplex_caption_layout = QVBoxLayout(self.duplex_outgoing_caption_panel)
-        duplex_caption_layout.setContentsMargins(10, 7, 10, 7)
+        duplex_caption_layout.setContentsMargins(13, 10, 13, 12)
         duplex_caption_layout.setSpacing(3)
         self.duplex_outgoing_caption_title = QLabel("Meeting’ga ketayotgan tarjima")
         self.duplex_outgoing_caption_title.setStyleSheet(
-            "color: #60a5fa; font-size: 9px; font-weight: 800;"
+            "color: #8fa0b7; font-size: 9px; font-weight: 700;"
         )
         self.duplex_outgoing_original_text = QLabel("Siz: gap kutilmoqda…")
         self.duplex_outgoing_original_text.setWordWrap(True)
@@ -1044,7 +1071,7 @@ class TranslatorWindow(QWidget):
         self.duplex_outgoing_target_text = QLabel("Tarjima: shu yerda chiqadi…")
         self.duplex_outgoing_target_text.setWordWrap(True)
         self.duplex_outgoing_target_text.setStyleSheet(
-            "color: #dbeafe; font-size: 12px; font-weight: 700;"
+            "color: #f1f5f9; font-size: 13px; font-weight: 650;"
         )
         duplex_caption_layout.addWidget(self.duplex_outgoing_caption_title)
         duplex_caption_layout.addWidget(self.duplex_outgoing_original_text)
@@ -1061,8 +1088,8 @@ class TranslatorWindow(QWidget):
         self.start_button.setAccessibleName("Tarjimani boshlash")
         self.start_button.setMinimumHeight(46)
         self.start_button.setStyleSheet(
-            "QPushButton { background: #1fbf68; font-size: 13px; } "
-            "QPushButton:hover { background: #28ce75; }"
+            "QPushButton { background: #15845a; font-size: 13px; } "
+            "QPushButton:hover { background: #1a9d6b; }"
         )
         self.start_button.clicked.connect(self.start_translator)
         self.stop_button = QPushButton("■  To‘xtatish")
@@ -1471,6 +1498,24 @@ class TranslatorWindow(QWidget):
         self._sync_mode_ui(apply_devices=True)
         self._sync_tray()
         self._set_controls(running=False)
+
+    def _toggle_quality(self, enabled: bool) -> None:
+        """«Sifatli tarjima» belgisi. Keyingi Start'dan kuchga kiradi."""
+        if enabled == getattr(self, "quality_mode", False):
+            return
+        self.quality_mode = enabled
+        self.settings.setValue("translation/quality", "true" if enabled else "false")
+        self.settings.sync()
+        print(f"[UI] Sifatli tarjima: {'YOQILDI' if enabled else 'o‘chirildi'}", flush=True)
+        if self.process is not None and self.tray is not None:
+            # Rejim dvigatel ishga tushganda tanlanadi — jonli almashtirib
+            # bo'lmaydi (butun tarjima zanjiri boshqacha quriladi).
+            self.tray.showMessage(
+                APP_NAME,
+                "Sifatli tarjima keyingi ishga tushirishda qo‘llanadi.",
+                QSystemTrayIcon.MessageIcon.Information,
+                4000,
+            )
 
     def _sync_meeting_uz_widgets(self) -> None:
         """Oynadagi belgi va tray bandini haqiqiy holatga qaytaradi."""
@@ -2698,7 +2743,7 @@ class TranslatorWindow(QWidget):
         self.duplex_outgoing_caption_panel.setVisible(duplex)
         self.language_label.setText("Tillar")
         # 530 → 596: «Meeting o'zbekcha» belgisi va navbat ko'rsatkichi.
-        self.setFixedSize(640, 596)
+        self.setFixedSize(640, 552)
         self._sync_meeting_uz_widgets()
         self._reset_captions()
         if apply_devices:
@@ -3121,9 +3166,9 @@ class TranslatorWindow(QWidget):
         self.duplex_outgoing_output.setEnabled(not running)
         self.start_button.setStyleSheet(
             (
-                "QPushButton { background: #1fbf68; color: white; font-size: 13px; } "
-                "QPushButton:hover { background: #28ce75; } "
-                "QPushButton:pressed { background: #169653; }"
+                "QPushButton { background: #15845a; color: white; font-size: 13px; } "
+                "QPushButton:hover { background: #1a9d6b; } "
+                "QPushButton:pressed { background: #0f6b48; }"
             )
             if not running and ready
             else "QPushButton { background: #263449; color: #77879d; font-size: 13px; }"
@@ -3246,6 +3291,9 @@ class TranslatorWindow(QWidget):
         # sessiyadagi `incoming_paused` yangi sessiyani darhol to'xtatardi).
         self.device_state_path.unlink(missing_ok=True)
         process_arguments = ["--voice", "Charon"]
+        if getattr(self, "quality_mode", False):
+            # Gapni kutib, to'liq gapni tarjima qilish rejimi.
+            process_arguments.append("--quality")
         control_sessions: list[tuple[str, str, str, str, str]] = []
         try:
             if mode == "duplex":
@@ -3712,22 +3760,27 @@ class TranslatorWindow(QWidget):
         outgoing = self.turn_states.get("OUTGOING", "idle")
         incoming = self.turn_states.get("INCOMING", "idle")
         if outgoing == "delivering":
-            # Sizning gapingiz tarjimasi hozir kabelga (Zoomga) oqmoqda.
-            text, colour = "📤 Tarjimangiz yetkazilmoqda…", "#f59e0b"
-        elif incoming == "delivering":
-            text, colour = "🎧 Suhbatdosh gapirmoqda — kuting", "#38bdf8"
-        elif self._last_turn_active == "OUTGOING":
-            text, colour = "✅ Yetkazildi — javobni kuting", "#22c55e"
-        else:
-            text, colour = "🎤 Gapirishingiz mumkin", "#94a3b8"
-        if outgoing == "delivering":
+            # «Tarjimangiz yetkazilmoqda…» yozuvi foydalanuvchi talabiga
+            # ko'ra OLIB TASHLANDI — gapirayotganda ekranda o'zgarib turgan
+            # yozuv keraksiz edi. Holat ichkarida saqlanadi: shu tugagach
+            # «Yetkazildi» ko'rsatiladi.
             self._last_turn_active = "OUTGOING"
-        elif incoming == "delivering":
+            self.turn_label.setVisible(False)
+            if self.tray is not None:
+                self.tray.setToolTip(APP_NAME)
+            return
+        if incoming == "delivering":
+            text, colour = "Suhbatdosh gapirmoqda — kuting", "#93c5fd"
+        elif self._last_turn_active == "OUTGOING":
+            text, colour = "Yetkazildi — javobni kuting", "#86efac"
+        else:
+            text, colour = "Gapirishingiz mumkin", "#94a3b8"
+        if incoming == "delivering":
             self._last_turn_active = "INCOMING"
         self.turn_label.setText(text)
         self.turn_label.setStyleSheet(
-            f"color: {colour}; font-size: 13px; font-weight: 700; "
-            "background: #1e293b; border-radius: 8px; padding: 7px;"
+            f"color: {colour}; font-size: 12px; font-weight: 600; "
+            "background: #131e30; border-radius: 8px; padding: 6px;"
         )
         self.turn_label.setVisible(True)
         # Oyna kichraytirilgan bo'lsa foydalanuvchi tray'dan boshqaradi —

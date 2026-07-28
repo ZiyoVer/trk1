@@ -421,3 +421,55 @@ bo'lmaydi, Stop→Start kerak (ekranda aytiladi).
 - Oyna: to'rt bosqichli suhbat aylanasi to'g'ri ko'rsatkich berdi;
   `devices.json` ikkala kalitni ham saqladi.
 - 70 test o'tdi.
+
+## v0.9.74 — «Sifatli tarjima» rejimi + interfeys tozalandi
+
+### 1. Sifatli tarjima (Bosqich 3)
+
+Ildiz sabab (kod xatosi EMAS): `gemini-3.5-live-translate-preview` —
+SINXRON tarjimon, gap tugashini kutmay har ~1 soniyalik bo'lakni alohida
+tarjima qiladi. Logdagi dalil: `UZ › Men o'zim ishlayotgan → RU › Я
+работаю`, `UZ › bo'lsa, zoomda → RU › в Zoom,`. Bo'laklar orasidagi
+grammatik bog'lanish yo'qoladi. O'zbekcha uchun ayniqsa yomon: **fe'l gap
+oxirida** keladi, ya'ni gap tugamaguncha tarjima qilinadigan ma'no yo'q.
+
+Yangi rejim (belgi ortida, o'chiq holda keladi):
+
+1. Live sessiya SAQLANADI, lekin undan faqat `input_transcription`
+   olinadi; modelning bo'lak-bo'lak AUDIOSI ijro etilmaydi.
+2. `SentenceBuffer` gapni yig'adi va tugaganini aniqlaydi: tinish belgisi,
+   **0.8 s pauza** (asosiy qoida — o'zbek transkriptida tinish belgisi
+   ko'pincha yo'q) yoki xavfsizlik chegarasi (12 s / 220 belgi).
+3. To'liq gap matn modeliga boradi: «tabiiy, jonli tarjima; so'zma-so'z
+   emas» + **oxirgi 3 gap konteksti** (olmosh/mavzu bog'lanishi uchun —
+   sinxron modelda bu umuman yo'q).
+4. Tarjima TTS bilan ovozga aylanadi (Charon ovozi saqlanadi) va mavjud
+   `AudioPlayer` ga beriladi — ijro/qurilma/aks-sado mantig'i o'zgarmaydi.
+
+**Model nomlari qattiq yozilmagan** — `_pick_models()` API'dan ro'yxat
+olib mos keladiganini tanlaydi (`--quality-model` / `--tts-model` bilan
+majburlash mumkin). Model eskirganda rejim jimgina o'lib qolmasin uchun.
+
+**XATOGA CHIDAMLI:** biror bosqich yiqilsa (model topilmadi, TTS bo'sh
+qaytdi) rejim o'chadi, logga sabab yoziladi va dvigatel odatdagi sinxron
+tarjimaga QAYTADI — foydalanuvchi jimlikda qolmaydi. Sinovda tasdiqlandi.
+
+### 2. Interfeys tozalandi (foydalanuvchi talabi)
+
+- **Ogohlantirish yozuvlari ekrandan olib tashlandi** (`route_hint`,
+  `meet_mic_hint` endi layoutga qo'shilmaydi). Ob'ektlar saqlandi —
+  kodning ~40 joyida matn yoziladi, ularni o'chirish keraksiz xavf edi.
+- «Tarjimangiz yetkazilmoqda…» yozuvi olindi; holat ichkarida saqlanadi,
+  tugagach «Yetkazildi — javobni kuting» ko'rinadi.
+- Ranglar tinchlantirildi: neon yashil tugma → bosiq zumrad, tarjima matni
+  → deyarli oq, yorliqlar → bosiq kulrang. Pastki panel yuqorigisi bilan
+  bir xil (ko'k quti olib tashlandi). Belgilar nozik ramkali.
+- Ortiqcha «Tillar» yorlig'i olindi (pastda «Mening tilim / Tarjima tili»
+  bor edi).
+- **Drayver qatori boshida yashirin** — skan tugagunча oynaning tepasida
+  sababsiz bo'shliq turardi.
+- Balandlik 596 → 552.
+
+Interfeys o'zgarishlari QT offscreen render bilan **rasmga olib
+ko'rilgan** va bosqichma-bosqich tuzatilgan (matnlar bir-birining ustiga
+tushib qolgani ham shunda topildi).

@@ -89,6 +89,85 @@ def translation_instruction(args: argparse.Namespace) -> str:
     )
 
 
+class SentenceBuffer:
+    """Nutq oqimidan TUGALLANGAN gapni ajratadi.
+
+    Nima uchun kerak (foydalanuvchi shikoyati: «ma'nosiz tarjima qilyapti,
+    gaplar bog'lanmayapti»): Live Translate — SINXRON tarjimon, gapning
+    tugashini kutmay har ~1 soniyalik bo'lakni alohida tarjima qiladi.
+    Logdagi dalil: `UZ › Men o'zim ishlayotgan → RU › Я работаю`,
+    `UZ › bo'lsa, zoomda → RU › в Zoom,`. Bo'laklar orasidagi grammatik
+    bog'lanish yo'qoladi.
+
+    O'zbek tili uchun bu ayniqsa yomon: FE'L GAP OXIRIDA keladi, ya'ni gap
+    tugamaguncha tarjima qilinadigan ma'no hali yo'q.
+
+    Shu sinf transkript bo'laklarini yig'adi va gap tugaganini aniqlaydi:
+    tinish belgisi, PAUZA (asosiy qoida — o'zbek transkriptida tinish
+    belgisi ko'pincha bo'lmaydi) yoki xavfsizlik chegarasi.
+    """
+
+    END_PUNCTUATION = ".?!…"
+    PAUSE_SECONDS = 0.8
+    MAX_SECONDS = 12.0
+    MAX_CHARS = 220
+
+    def __init__(self, clock=time.monotonic):  # noqa: ANN001
+        self._clock = clock
+        self._parts: list[str] = []
+        self._last_text_at = 0.0
+        self._started_at = 0.0
+
+    def add(self, text: str) -> None:
+        text = (text or "").strip()
+        if not text:
+            return
+        now = self._clock()
+        if not self._parts:
+            self._started_at = now
+        self._parts.append(text)
+        self._last_text_at = now
+
+    @property
+    def text(self) -> str:
+        return " ".join(self._parts).strip()
+
+    def ready(self) -> bool:
+        """Gap tugadimi."""
+        if not self._parts:
+            return False
+        now = self._clock()
+        current = self.text
+        if current.endswith(tuple(self.END_PUNCTUATION)):
+            return True
+        if now - self._last_text_at >= self.PAUSE_SECONDS:
+            return True
+        return (
+            now - self._started_at >= self.MAX_SECONDS
+            or len(current) >= self.MAX_CHARS
+        )
+
+    def take(self) -> str:
+        current = self.text
+        self._parts.clear()
+        return current
+
+
+def quality_instruction(source: str, target: str) -> str:
+    """«Sifatli» rejim uchun ko'rsatma — TABIIY tarjima, so'zma-so'z emas."""
+    return (
+        f"You translate meeting speech from {source} into {target}. "
+        f"Write the way a fluent native {target} speaker would actually say "
+        "it out loud — natural word order, natural connectors, no calques. "
+        "Never translate word by word. Keep names, numbers and dates exact. "
+        "Keep the speaker's tone (formal stays formal). Do not explain, do "
+        "not add or remove information, do not answer questions, do not add "
+        "quotation marks. Output ONLY the translation, nothing else. "
+        "Earlier lines are given as context so pronouns and topic stay "
+        "consistent; translate ONLY the last line."
+    )
+
+
 def input_transcription_config(args: argparse.Namespace) -> types.AudioTranscriptionConfig:
     """Manba tili aniq tanlangan bo'lsa modelga til ishorasi beriladi.
 
@@ -335,6 +414,16 @@ class Translator:
         # «Meeting o'zbekcha» — kiruvchi kanalni butun dasturni to'xtatmasdan
         # vaqtincha o'chirish uchun. Faqat INCOMING kanalda ishlatiladi.
         self.pause_event = asyncio.Event()
+        # «Sifatli» rejim holati (gapni kutib to'liq tarjima qilish).
+        self.quality_mode = bool(getattr(args, "quality", False))
+        self.sentence_buffer = SentenceBuffer()
+        self._sentence_queue: asyncio.Queue[str] = asyncio.Queue()
+        self._recent_pairs: deque[tuple[str, str]] = deque(maxlen=3)
+        self._quality_failed = False
+        self._quality_client_cache = None
+        self._text_model = ""
+        self._tts_model = ""
+        self._api_key = ""
         # Keep latency bounded: when the network falls behind, discard the
         # oldest PCM rather than playing a stale translation seconds later.
         self.audio_queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=25)
@@ -400,6 +489,141 @@ class Translator:
         # tashlandi, tarjima umuman ishlamadi). Bu yerda halqa xavfi ham
         # yo'q: chiqish tili = target, echo_target_language=False bo'lgani
         # uchun model o'z tilidagi nutqqa javob bermaydi.
+
+    # === «SIFATLI» REJIM: gapni kutib, TO'LIQ gapni tarjima qilish ===
+
+    def _quality_client(self):  # noqa: ANN201
+        if self._quality_client_cache is None:
+            self._quality_client_cache = genai.Client(api_key=self._api_key)
+        return self._quality_client_cache
+
+    def _pick_models(self) -> tuple[str, str]:
+        """Matn va TTS modellarini API'dan TOPADI (taxmin qilinmaydi).
+
+        Model nomlari vaqt o'tishi bilan o'zgaradi; kodga qattiq yozib
+        qo'ysak, model eskirganda rejim jimgina ishlamay qolardi. Shuning
+        uchun ro'yxat olinadi va mos keladigani tanlanadi. Foydalanuvchi
+        `--quality-model` / `--tts-model` bilan majburlashi mumkin."""
+        text_model = (self.args.quality_model or "").strip()
+        tts_model = (self.args.tts_model or "").strip()
+        if text_model and tts_model:
+            return text_model, tts_model
+        names: list[str] = []
+        with suppress(Exception):
+            for model in self._quality_client().models.list():
+                name = str(getattr(model, "name", "")).replace("models/", "")
+                if name:
+                    names.append(name)
+        self._log(f"[SIFAT] mavjud modellar: {len(names)} ta")
+
+        def best(candidates: list[str]) -> str:
+            return sorted(candidates, reverse=True)[0] if candidates else ""
+
+        if not tts_model:
+            tts_model = best([n for n in names if "tts" in n.lower()])
+        if not text_model:
+            usable = [
+                n for n in names
+                if "flash" in n.lower()
+                and not any(bad in n.lower() for bad in ("tts", "live", "embed", "image", "vision"))
+            ]
+            text_model = best(usable) or best(
+                [n for n in names if "gemini" in n.lower() and "tts" not in n.lower()]
+            )
+        return text_model, tts_model
+
+    def _quality_translate(self, sentence: str) -> str:
+        """To'liq gapni matn modeli bilan tarjima qiladi (kontekst bilan)."""
+        source = LANGUAGE_NAMES.get(self.args.source_language, self.args.source_language)
+        target = LANGUAGE_NAMES.get(self.args.target_language, self.args.target_language)
+        history = "\n".join(f"{src} -> {dst}" for src, dst in self._recent_pairs)
+        prompt = (f"Context (already translated):\n{history}\n\n" if history else "")
+        prompt += f"Translate this line:\n{sentence}"
+        response = self._quality_client().models.generate_content(
+            model=self._text_model,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=quality_instruction(source, target),
+                temperature=0.3,
+            ),
+        )
+        return (getattr(response, "text", "") or "").strip()
+
+    def _quality_speak(self, text: str) -> bytes:
+        """Tarjimani ovozga aylantiradi (Charon ovozi saqlanadi)."""
+        response = self._quality_client().models.generate_content(
+            model=self._tts_model,
+            contents=text,
+            config=types.GenerateContentConfig(
+                response_modalities=["AUDIO"],
+                speech_config=types.SpeechConfig(
+                    voice_config=types.VoiceConfig(
+                        prebuilt_voice_config=types.PrebuiltVoiceConfig(
+                            voice_name=self.args.voice or DEFAULT_VOICE
+                        )
+                    )
+                ),
+            ),
+        )
+        for candidate in getattr(response, "candidates", []) or []:
+            for part in getattr(candidate.content, "parts", []) or []:
+                data = getattr(getattr(part, "inline_data", None), "data", None)
+                if data:
+                    return bytes(data)
+        return b""
+
+    async def _watch_sentences(self) -> None:
+        """Gap tugaganini kuzatadi va navbatga qo'yadi."""
+        while not self.stop_event.is_set():
+            if self.sentence_buffer.ready():
+                sentence = self.sentence_buffer.take()
+                if sentence:
+                    self._sentence_queue.put_nowait(sentence)
+            with suppress(TimeoutError, asyncio.TimeoutError):
+                await asyncio.wait_for(self.stop_event.wait(), timeout=0.2)
+
+    async def _quality_worker(self) -> None:
+        """Gaplarni BIRMA-BIR tarjima qilib ijro etadi (tartib buzilmasin).
+
+        XATOGA CHIDAMLI: biror bosqich yiqilsa rejim o'chadi va dvigatel
+        odatdagi (sinxron) tarjimaga qaytadi — foydalanuvchi jimlikda
+        qolmaydi."""
+        while not self.stop_event.is_set():
+            try:
+                sentence = await asyncio.wait_for(self._sentence_queue.get(), timeout=0.5)
+            except (TimeoutError, asyncio.TimeoutError):
+                continue
+            if self._quality_failed:
+                continue
+            try:
+                if not self._text_model or not self._tts_model:
+                    self._text_model, self._tts_model = await asyncio.to_thread(
+                        self._pick_models
+                    )
+                    self._log(
+                        f"[SIFAT] matn modeli: {self._text_model!r} | "
+                        f"ovoz modeli: {self._tts_model!r}"
+                    )
+                    if not self._text_model or not self._tts_model:
+                        raise RuntimeError("mos model topilmadi")
+                started = time.monotonic()
+                translated = await asyncio.to_thread(self._quality_translate, sentence)
+                if not translated:
+                    continue
+                self._recent_pairs.append((sentence, translated))
+                self._log(f"{self.args.target_language.upper()} ›› {translated}")
+                pcm = await asyncio.to_thread(self._quality_speak, translated)
+                if not pcm:
+                    raise RuntimeError("ovoz qaytmadi")
+                self.player.play(pcm)
+                self.player.flush(force_start=True)
+                self._log(f"[SIFAT] {time.monotonic() - started:.1f}s")
+            except Exception as error:
+                self._quality_failed = True
+                self._log(
+                    f"[SIFAT] ishlamadi ({type(error).__name__}: {error}) — "
+                    "odatdagi tarjimaga qaytdik."
+                )
 
     # === NAVBAT (turn-taking) va VAQTINCHA O'CHIRISH ===
     # Foydalanuvchi shikoyati: "men gapiryapman, u gapiryapti, latency
@@ -497,8 +721,17 @@ class Translator:
             self._log(f"Nazorat ovozi: {self.monitor_device.name}")
         self.capture.start()
         self.started_at = time.monotonic()
+        self._api_key = api_key
         device_watcher = asyncio.create_task(self._watch_output_device())
         state_watcher = asyncio.create_task(self._watch_state())
+        quality_tasks = (
+            [
+                asyncio.create_task(self._watch_sentences()),
+                asyncio.create_task(self._quality_worker()),
+            ]
+            if self.quality_mode
+            else []
+        )
         pause_watcher = (
             asyncio.create_task(self._watch_pause_command())
             if self.channel == "INCOMING"
@@ -536,7 +769,7 @@ class Translator:
                         pass
                     delay = min(delay * 2, 15.0)
         finally:
-            for task in (device_watcher, state_watcher, pause_watcher):
+            for task in (device_watcher, state_watcher, pause_watcher, *quality_tasks):
                 if task is None:
                     continue
                 task.cancel()
@@ -623,6 +856,11 @@ class Translator:
                 if text and text != self._last_input_text:
                     self._last_input_text = text
                     self._log(f"{self.source_language} › {text}")
+                    if self.quality_mode and not self._quality_failed:
+                        # SIFATLI REJIM: modelning bo'lak-bo'lak tarjimasi
+                        # emas, MANBA MATNI yig'iladi — gap tugagach to'liq
+                        # holda tarjima qilinadi.
+                        self.sentence_buffer.add(text)
             if not self.args.no_transcript and content.output_transcription:
                 text = (content.output_transcription.text or "").strip()
                 if text and text != self._last_output_text:
@@ -633,9 +871,18 @@ class Translator:
                     if part.inline_data and part.inline_data.data:
                         data = part.inline_data.data
                         self.output_bytes += len(data)
+                        if self.quality_mode and not self._quality_failed:
+                            # Sinxron modelning bo'lak-bo'lak audiosi
+                            # IJRO ETILMAYDI — o'rniga to'liq gap tarjimasi
+                            # yangraydi. (Rejim yiqilsa shu audio darhol
+                            # qaytadi — foydalanuvchi jimlikda qolmaydi.)
+                            continue
                         self.player.play(data)
                         if self.monitor_player is not None:
                             self.monitor_player.play(data)
+            if content.turn_complete and self.quality_mode and not self._quality_failed:
+                # Sifatli rejimda ijroni gap tarjimasi boshqaradi.
+                continue
             if content.turn_complete:
                 # QISQA JAVOBLAR YO'QOLARDI. Ijro odatda bufer to'lgach
                 # boshlanadi (`start_buffer_ms`), gap tugaganda esa chegara
@@ -915,6 +1162,13 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Run incoming and outgoing translation sessions simultaneously",
     )
+    parser.add_argument(
+        "--quality",
+        action="store_true",
+        help="Sifatli rejim: gap tugashini kutib, TO'LIQ gapni tarjima qiladi",
+    )
+    parser.add_argument("--quality-model", default="", help="Matn tarjima modeli (bo'sh = avtomatik)")
+    parser.add_argument("--tts-model", default="", help="Ovoz modeli (bo'sh = avtomatik)")
     parser.add_argument("--input-device", help="BlackHole input device name or ID")
     parser.add_argument("--output-device", help="Physical speaker/headphone name or ID")
     parser.add_argument(
