@@ -2305,9 +2305,39 @@ class TranslatorWindow(QWidget):
             if "=" in line:
                 key, _, value = line.partition("=")
                 values[key.strip()] = value.strip()
+        # Zoom ochiqmi — SHU YERDA (fon oqimida) tekshiramiz: `tasklist`
+        # ~200-300 ms oladi va GUI oqimida chaqirilsa Start bosilganda ilova
+        # qotardi. Natija signaldan OLDIN yoziladi, demak `_routing_applied`
+        # uni tayyor holda o'qiydi.
+        self.zoom_running = self._meeting_app_running()
         self.device_scan_signals.routing.emit(
             values.get("render", ""), values.get("capture", ""), values.get("physical", "")
         )
+
+    @staticmethod
+    def _meeting_app_running() -> bool:
+        """Zoom ish stoli ilovasi ochiqmi (fon oqimida chaqiriladi).
+
+        Nima uchun kerak: Zoom mikrofonni MEETINGGA KIRGAN PAYTDA
+        "yopishtirib" oladi va keyin Windows default'i o'zgarsa ergashmaydi.
+        Brauzerdagi Meet esa ergashadi — 2026-07-28 da Meet ishlab, Zoom
+        ishlamaganining sababi AYNAN SHU. Ilova Zoom'ni majburlay olmaydi,
+        lekin ochiq ekanini bilsa foydalanuvchini ogohlantira oladi."""
+        if platform.system() != "Windows":
+            return False
+        try:
+            creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+            result = subprocess.run(
+                ["tasklist", "/FI", "IMAGENAME eq Zoom.exe", "/NH"],
+                capture_output=True, encoding="utf-8", errors="replace",
+                timeout=8, creationflags=creationflags,
+            )
+        except Exception as error:
+            print(f"[ZOOM] tekshirib bo'lmadi: {error}", flush=True)
+            return False
+        running = "zoom.exe" in (result.stdout or "").lower()
+        print(f"[ZOOM] ish stoli ilovasi ochiq: {running}", flush=True)
+        return running
 
     def _routing_applied(self, speaker: str, mic: str, physical: str) -> None:
         """Fon oqimidagi routing tugadi — Meet qurilmalari nomini ko'rsatamiz."""
@@ -2315,6 +2345,37 @@ class TranslatorWindow(QWidget):
         self.win_meeting_mic = mic
         self.win_physical_output = physical
         self._show_meet_devices_hint()
+        self._warn_zoom_microphone(mic)
+
+    def _warn_zoom_microphone(self, mic: str) -> None:
+        """Zoom ochiq bo'lsa — mikrofonni qo'lda tanlashni ESLATAMIZ.
+
+        Doimiy ko'k banner QAYTARILMADI (foydalanuvchi uni ataylab olib
+        tashlatgan edi). Buning o'rniga FAQAT Zoom ochiq bo'lganda bir
+        martalik bildirishnoma chiqadi — u oyna kichraytirilgan bo'lsa ham
+        ko'rinadi, chunki foydalanuvchi ko'pincha tray'dan boshqaradi.
+
+        Nima uchun majburiy: 2026-07-28 Zoom ko'rsatuvida ilova rus
+        tarjimasini kabelga TO'G'RI yozgan (log bilan tasdiqlangan), lekin
+        Zoom mikrofonni fizik mikrofonda ushlab turgani uchun hamkasblar
+        xom o'zbekchani eshitgan."""
+        if not getattr(self, "zoom_running", False) or not mic:
+            return
+        message = (
+            f"Zoom ochiq. Zoom → Settings → Audio → Microphone = «{mic}» "
+            "qilib qo'ying — aks holda suhbatdosh tarjimani emas, XOM "
+            "ovozingizni eshitadi. Bir marta tanlansa Zoom eslab qoladi."
+        )
+        print(f"[ZOOM] ogohlantirish ko'rsatildi: mikrofon={mic!r}", flush=True)
+        if self.tray is not None:
+            self.tray.showMessage(
+                "Zoom mikrofonini tekshiring",
+                message,
+                QSystemTrayIcon.MessageIcon.Warning,
+                15000,
+            )
+        self.route_hint.setText(f"⚠️ {message}")
+        self.route_hint.setVisible(True)
 
     def _show_meet_devices_hint(self) -> None:
         """Meet/Zoom qurilma nomlari — foydalanuvchi so'roviga ko'ra endi

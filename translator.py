@@ -568,9 +568,22 @@ class Translator:
                         if self.monitor_player is not None:
                             self.monitor_player.play(data)
             if content.turn_complete:
-                self.player.flush()
+                # QISQA JAVOBLAR YO'QOLARDI. Ijro odatda bufer to'lgach
+                # boshlanadi (`start_buffer_ms`), gap tugaganda esa chegara
+                # `minimum_flush_start_ms` = 480 ms ga tushadi. Lekin
+                # «Ha», «Rahmat», «Besh» kabi javob 480 ms audio ham
+                # chiqarmaydi — chegara oshmagani uchun ijro UMUMAN
+                # boshlanmasdi va o'sha bo'lak buferda yotib, keyingi gapga
+                # yopishib chiqardi ("boshida keldi, keyin qotib-qotib
+                # eshitilmay qoldi").
+                #
+                # `force_start` gap TUGAGANIDA berilsa, boshqa hech narsa
+                # o'zgarmaydi: uzun gapda ijro allaqachon boshlangan
+                # bo'ladi, ya'ni bu bayroq FAQAT 480 ms dan qisqa
+                # javoblarga ta'sir qiladi — aynan buzuq holatga.
+                self.player.flush(force_start=True)
                 if self.monitor_player is not None:
-                    self.monitor_player.flush()
+                    self.monitor_player.flush(force_start=True)
 
     async def _send_google_audio(self, session) -> None:  # noqa: ANN001
         # Live Translate expects one continuous PCM stream. Artificial turn

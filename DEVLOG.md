@@ -303,3 +303,32 @@ jihatdan yo'q.
 1. Zoom → Settings → Audio → Microphone = `CABLE Output (VB-Audio Virtual
    Cable)`. Bir marta, Zoom eslab qoladi.
 2. Xonada FAQAT bitta kompyuter meetingda tursin.
+
+### v0.9.72 — Zoom qismi (qo'shimcha)
+
+**1. Zoom ogohlantirishi.** Start bosilganda Zoom ish stoli ilovasi ochiq
+bo'lsa, bir martalik bildirishnoma chiqadi: «Zoom → Settings → Audio →
+Microphone = «CABLE Output …»». Doimiy ko'k banner QAYTARILMADI
+(foydalanuvchi uni ataylab olib tashlatgan) — faqat Zoom ochiq bo'lgandagi
+bildirishnoma, u oyna kichraytirilgan bo'lsa ham ko'rinadi.
+`tasklist` FON oqimida chaqiriladi (`_apply_routing_worker` ichida) —
+GUI oqimida ~300 ms qotishi mumkin edi.
+
+**2. Qisqa javoblar yo'qolardi (480 ms).** `AudioPlayer` ijroni bufer
+to'lgach boshlaydi; gap tugaganda chegara `minimum_flush_start_ms` = 480 ms
+ga tushadi, lekin `force_start` HECH QAYERDA ishlatilmasdi. 44100 Hz stereo
+chiqishda 480 ms = 84 480 bayt — «Ha», «Rahmat», raqam kabi javob shuncha
+chiqarmaydi, ya'ni ijro umuman boshlanmasdi va bo'lak buferda yotib keyingi
+gapga yopishib chiqardi. Endi `turn_complete` da `flush(force_start=True)`.
+Ta'sir doirasi tekshirildi: 600 ms va undan uzun gaplarda xatti-harakat
+o'zgarmaydi (ular allaqachon ijro etilardi) — faqat 480 ms dan qisqa
+javoblar tuzaladi.
+
+**Ataylab TEGILMADI — `SilenceGate`.** Simulyatsiya bilan tasdiqlandi:
+doimiy darajali audio RMS 600 va 1200 da 0.96 s dan keyin butunlay
+jimlashtiriladi (RMS 2500+ da yo'q, chunki `FLOOR_MAX`=800 →
+chegara 2000). Pauzali haqiqiy nutqda 300 blokdan 0 tasi jimlashtirildi,
+ya'ni oddiy suhbatga tegmaydi — xavf faqat uzluksiz, siqilgan oqimda
+(video/musiqa). Tuzatish "that it that it" gallyutsinatsiya himoyasini
+qayta ochib yuborishi mumkin, shuning uchun alohida, dalil bilan
+qilinadi.
