@@ -173,7 +173,7 @@ from system_audio import (
 
 
 APP_NAME = "Live Translator"
-APP_VERSION = "0.9.63"
+APP_VERSION = "0.9.64"
 
 # Yordam serveri (Railway): loglarni yuborish va yangilanishni tekshirish.
 # Yuklash tokeni ilova ichida bo'lishi SHART (foydalanuvchi bilmaydi) —
@@ -1663,6 +1663,26 @@ class TranslatorWindow(QWidget):
         combo.setCurrentIndex(-1)
         return False
 
+    def _restore_preferred_output(self) -> bool:
+        """Foydalanuvchi «ESHITAMAN» dan tanlagan qurilmani qaytaradi.
+
+        JONLI NOSOZLIK: foydalanuvchi "PC Monitor" ni tanlaganda ham ilova
+        uni "Динамики (Realtek)" ga QAYTARIB yuborardi — chunki qurilma
+        ro'yxati yangilanganda (`_apply_direction_devices`) chiqish combo'si
+        AVTOMATIK tanlov bilan qayta yozilardi va foydalanuvchi tanlovi
+        e'tiborsiz qolardi. Endi saqlangan tanlov HAR DOIM ustun."""
+        wanted = str(getattr(self, "preferred_output_name", "") or "")
+        if not wanted:
+            return False
+        for index in range(self.output_device.count()):
+            name = str(
+                self.output_device.itemData(index, Qt.ItemDataRole.UserRole + 1) or ""
+            )
+            if name == wanted:
+                self.output_device.setCurrentIndex(index)
+                return True
+        return False
+
     def _restore_saved_cable(self, combo: QComboBox, key: str) -> bool:
         """Oldingi sessiyada ishlatilgan kabelni qaytaradi (agar hali mavjud).
 
@@ -1716,14 +1736,17 @@ class TranslatorWindow(QWidget):
                         "cable output",
                     ),
                 )
-            self._select_device_kind(
-                self.output_device,
-                virtual=False,
-                # Birinchi navbatda foydalanuvchi HOZIR eshitayotgan qurilma
-                # (tizim tanlovi) — nomi "P2961" kabi notanish bo'lsa ham
-                # to'g'ri topiladi. Nomga qarab tanlash faqat zaxira yo'l.
-                preferred_words=self._output_preference_words(),
-            )
+            # Foydalanuvchi tanlovi BIRINCHI (aks holda uni qayta yozib
+            # yuborardik — "PC Monitor tanlasam yana dinamikka qaytyapti").
+            if not self._restore_preferred_output():
+                self._select_device_kind(
+                    self.output_device,
+                    virtual=False,
+                    # Birinchi navbatda foydalanuvchi HOZIR eshitayotgan
+                    # qurilma (tizim tanlovi) — nomi "P2961" kabi notanish
+                    # bo'lsa ham topiladi. Nom bo'yicha tanlash zaxira yo'l.
+                    preferred_words=self._output_preference_words(),
+                )
         else:
             self._select_device_kind(
                 self.input_device,
@@ -3394,6 +3417,10 @@ class TranslatorWindow(QWidget):
         faqat zaxira (tizim tanlovi virtual kabel bo'lib qolgan hollar).
         """
         words: list[str] = []
+        # Foydalanuvchi tanlovi eng oldinda (qo'shimcha himoya).
+        picked = str(getattr(self, "preferred_output_name", "") or "")
+        if picked:
+            words.append(picked.casefold())
         # Windows tinglashda tizim default'i KABELGA o'rnatiladi, shuning
         # uchun preferred_physical_output() None qaytaradi va "headphone"
         # kaliti bo'sh quloqchin uyasini tanlab qo'yardi. Start'dan oldingi
