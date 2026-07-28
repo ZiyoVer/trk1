@@ -173,7 +173,7 @@ from system_audio import (
 
 
 APP_NAME = "Live Translator"
-APP_VERSION = "0.9.65"
+APP_VERSION = "0.9.66"
 
 # Yordam serveri (Railway): loglarni yuborish va yangilanishni tekshirish.
 # Yuklash tokeni ilova ichida bo'lishi SHART (foydalanuvchi bilmaydi) —
@@ -1094,6 +1094,9 @@ class TranslatorWindow(QWidget):
         self.tray_target_actions: list[QAction] = []
         # ASOSIY boshqaruv eng tepada: tray belgisidan boshlash/to'xtatish.
         self.tray_start_action = menu.addAction(t("Tarjimani boshlash"))
+        # DIQQAT: tray'dan Start HAR DOIM ishlashi kerak — oyna yashirin
+        # bo'lganda ham. Shuning uchun bevosita start_translator (u o'zi
+        # qurilmalarni tekshiradi va kerak bo'lsa ro'yxatni yangilaydi).
         self.tray_start_action.triggered.connect(self.start_translator)
         self.tray_stop_action = menu.addAction(t("Tarjimani to‘xtatish"))
         self.tray_stop_action.triggered.connect(self.stop_translator)
@@ -2210,18 +2213,10 @@ class TranslatorWindow(QWidget):
         self._show_meet_devices_hint()
 
     def _show_meet_devices_hint(self) -> None:
-        mic = getattr(self, "win_meeting_mic", "")
-        speaker = getattr(self, "win_meeting_speaker", "")
-        if not (mic or speaker):
-            return
-        lines = []
-        if mic:
-            lines.append(f"🎤 Meet/Zoom MIKROFONI: «{mic}»")
-        if speaker:
-            lines.append(f"🔊 Meet/Zoom KARNAYI: «{speaker}»")
-        lines.append("(yoki ikkalasini «Same as System» qiling)")
-        self.meet_mic_hint.setText("\n".join(lines))
-        self.meet_mic_hint.setVisible(True)
+        """Meet/Zoom qurilma nomlari — foydalanuvchi so'roviga ko'ra endi
+        EKRANDA ko'rsatilmaydi (kerak emas). Nomlar logda qoladi, kerak
+        bo'lsa tashxis uchun ishlatiladi."""
+        self.meet_mic_hint.setVisible(False)
 
     def _win_restore_routing_async(self) -> None:
         """Qurilmalarni FON oqimida tiklaydi (GUI qotmasin).
@@ -2790,6 +2785,14 @@ class TranslatorWindow(QWidget):
             print("[UI] Start rad: API kalit yo'q", flush=True)
             self.edit_settings(required=True)
             return
+        if self.input_device.currentData() is None or self.output_device.currentData() is None:
+            # O'ZINI TUZATADI: ro'yxat vaqtincha bo'sh bo'lishi mumkin (fon
+            # skaneri PortAudio'ni yangilayotgan payt). Oyna yashirin bo'lganda
+            # tray'dan Start bosilsa aynan shu holat "hech narsa ishlamayapti"
+            # bo'lib ko'rinardi — endi ro'yxatni yangilab, qayta urinamiz.
+            print("[UI] Qurilmalar bo'sh — ro'yxat yangilanmoqda…", flush=True)
+            self._refresh_audio_devices()
+            self._apply_direction_devices(self._current_mode())
         if self.input_device.currentData() is None or self.output_device.currentData() is None:
             print(
                 "[UI] Start rad: qurilma tanlanmagan "
