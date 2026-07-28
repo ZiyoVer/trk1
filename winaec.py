@@ -292,6 +292,61 @@ def output_is_ear_safe(name: str) -> bool | None:
     return kind in FF_EAR_SAFE
 
 
+def default_endpoint_name(flow: int = 0) -> str:
+    """Hozirgi ASOSIY (default) qurilma nomi — TEZ (ctypes, ~10 ms).
+
+    Ilgari buni PowerShell (`getdefaults`) qilardi: har chaqiruv C#
+    kompilyatsiya bilan ~2 SONIYA va Start bosilganda GUI qotardi.
+    Bu yerda o'sha ma'lumot bevosita COM orqali olinadi."""
+    try:
+        ctypes.windll.ole32.CoInitializeEx(None, 0)
+        enum = _co_create(CLSID_MMDeviceEnumerator, IID_IMMDeviceEnumerator)
+    except Exception:
+        return ""
+    try:
+        dev = ctypes.c_void_p(0)
+        # GetDefaultAudioEndpoint (vtable 4), role 0 = eConsole
+        if _call(
+            enum, 4,
+            (ctypes.c_int, ctypes.c_int, ctypes.POINTER(ctypes.c_void_p)),
+            flow, 0, ctypes.byref(dev),
+        ) != S_OK or not dev.value:
+            return ""
+        try:
+            store = ctypes.c_void_p(0)
+            if _call(
+                dev.value, 4,
+                (ctypes.c_int, ctypes.POINTER(ctypes.c_void_p)),
+                0, ctypes.byref(store),
+            ) != S_OK or not store.value:
+                return ""
+            try:
+                key = PROPERTYKEY(
+                    GUID.of(PKEY_FRIENDLY_NAME_FMTID), PKEY_FRIENDLY_NAME_PID
+                )
+                pv = PROPVARIANT()
+                name = ""
+                if _call(
+                    store.value, 5,
+                    (ctypes.POINTER(PROPERTYKEY), ctypes.POINTER(PROPVARIANT)),
+                    ctypes.byref(key), ctypes.byref(pv),
+                ) == S_OK and pv.vt == 31 and pv.data:
+                    name = (
+                        ctypes.cast(ctypes.c_void_p(pv.data), ctypes.c_wchar_p).value
+                        or ""
+                    )
+                ctypes.windll.ole32.PropVariantClear(ctypes.byref(pv))
+                return name
+            finally:
+                _release(store.value)
+        finally:
+            _release(dev.value)
+    except Exception:
+        return ""
+    finally:
+        _release(enum)
+
+
 def match_device_index(target: str, names: list[str]) -> int:
     """PortAudio nomi (qisqartirilgan bo'lishi mumkin) -> MMDevice indeksi."""
     t = _norm(target)

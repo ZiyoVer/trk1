@@ -173,7 +173,7 @@ from system_audio import (
 
 
 APP_NAME = "Live Translator"
-APP_VERSION = "0.9.64"
+APP_VERSION = "0.9.65"
 
 # Yordam serveri (Railway): loglarni yuborish va yangilanishni tekshirish.
 # Yuklash tokeni ilova ichida bo'lishi SHART (foydalanuvchi bilmaydi) —
@@ -314,6 +314,7 @@ class DeviceScanSignals(QObject):
 
     signature = Signal(tuple)
     drivers = Signal(list)
+    routing = Signal(str, str, str)   # (karnay, mikrofon, fizik chiqish)
 
 
 class SupportSignals(QObject):
@@ -571,11 +572,13 @@ class TranslatorWindow(QWidget):
         self.audio_devices_initialized = False
         # Qurilma skanerlari FON oqimida ishlaydi (pastdagi izohga qarang).
         self._sd_lock = threading.Lock()
+        self._routing_lock = threading.Lock()
         self._scan_busy = False
         self._driver_scan_busy = False
         self.device_scan_signals = DeviceScanSignals()
         self.device_scan_signals.signature.connect(self._device_signature_ready)
         self.device_scan_signals.drivers.connect(self._apply_driver_state)
+        self.device_scan_signals.routing.connect(self._routing_applied)
         self.support_signals = SupportSignals()
         self.support_signals.finished.connect(self._support_finished)
         self.update_signals = UpdateSignals()
@@ -2116,6 +2119,31 @@ class TranslatorWindow(QWidget):
         """
         if platform.system() != "Windows":
             return
+        # ENG TEZ YO'L: hozirgi default'larni ctypes bilan o'qiymiz (~10 ms),
+        # kabellarga o'tkazishni esa FON oqimida bajaramiz. Ilgari bularning
+        # hammasi GUI oqimida PowerShell orqali bo'lardi (~2-3 s) va Start
+        # bosilganda ilova qotardi.
+        if platform.system() == "Windows":
+            try:
+                from winaec import default_endpoint_name
+
+                fast_render = default_endpoint_name(0)
+                fast_capture = default_endpoint_name(1)
+            except Exception as error:
+                print(f"[ROUTING] tez o'qish xato: {error}", flush=True)
+                fast_render = fast_capture = ""
+            if fast_render or fast_capture:
+                self.win_prev_render = fast_render
+                self.win_prev_capture = fast_capture
+                self.win_meeting_speaker = ""
+                self.win_meeting_mic = ""
+                self.win_physical_output = ""
+                threading.Thread(
+                    target=self._apply_routing_worker,
+                    args=(render_match, capture_match),
+                    daemon=True,
+                ).start()
+                return
         # TEZKOR YO'L: hammasi BITTA PowerShell chaqiruvida. Har chaqiruv C#
         # kompilyatsiya qilgani uchun ~2 soniya ketardi va Start bosilganda
         # ilova bir necha soniya QOTIB qolardi (foydalanuvchi shikoyati:
@@ -2160,6 +2188,58 @@ class TranslatorWindow(QWidget):
             self.win_meeting_mic = (
                 out.split("OK:", 1)[1].strip() if out.startswith("OK:") else ""
             )
+
+    def _apply_routing_worker(self, render_match: str, capture_match: str) -> None:
+        """Kabellarga o'tkazish — FON oqimida (GUI kutmaydi)."""
+        with self._routing_lock:
+            out = self._win_audio("startduplex", f"{render_match}|{capture_match}")
+        values: dict[str, str] = {}
+        for line in out.splitlines():
+            if "=" in line:
+                key, _, value = line.partition("=")
+                values[key.strip()] = value.strip()
+        self.device_scan_signals.routing.emit(
+            values.get("render", ""), values.get("capture", ""), values.get("physical", "")
+        )
+
+    def _routing_applied(self, speaker: str, mic: str, physical: str) -> None:
+        """Fon oqimidagi routing tugadi — Meet qurilmalari nomini ko'rsatamiz."""
+        self.win_meeting_speaker = speaker
+        self.win_meeting_mic = mic
+        self.win_physical_output = physical
+        self._show_meet_devices_hint()
+
+    def _show_meet_devices_hint(self) -> None:
+        mic = getattr(self, "win_meeting_mic", "")
+        speaker = getattr(self, "win_meeting_speaker", "")
+        if not (mic or speaker):
+            return
+        lines = []
+        if mic:
+            lines.append(f"🎤 Meet/Zoom MIKROFONI: «{mic}»")
+        if speaker:
+            lines.append(f"🔊 Meet/Zoom KARNAYI: «{speaker}»")
+        lines.append("(yoki ikkalasini «Same as System» qiling)")
+        self.meet_mic_hint.setText("\n".join(lines))
+        self.meet_mic_hint.setVisible(True)
+
+    def _win_restore_routing_async(self) -> None:
+        """Qurilmalarni FON oqimida tiklaydi (GUI qotmasin).
+
+        JONLI NOSOZLIK: "To'xtatishni bossam to'xtamayapti, UI qotib qolgan".
+        Sabab — Stop bosilganda `_win_restore_routing()` GUI oqimida
+        PowerShell ishga tushirardi (C# kompilyatsiya, ~2-3s), keyin jarayon
+        tugaganda YANA bir marta. Endi ikkalasi ham fon oqimida."""
+        if platform.system() != "Windows":
+            return
+        threading.Thread(target=self._restore_routing_worker, daemon=True).start()
+
+    def _restore_routing_worker(self) -> None:
+        with self._routing_lock:
+            try:
+                self._win_restore_routing_async()
+            except Exception as error:
+                print(f"[ROUTING] tiklashda xato: {error}", flush=True)
 
     def _win_restore_routing(self) -> None:
         """Stop/chiqishda default qurilmalarni FIZIKga qaytaradi.
@@ -2901,17 +2981,9 @@ class TranslatorWindow(QWidget):
                 # TARJIMANI EMAS, xom ovozni eshitadi. Ilova tarjimani qaysi
                 # kabelga yozayotgan bo'lsa, Meet AYNAN o'shaning "Output"
                 # tomonini tanlashi kerak — nomini o'zimiz ko'rsatamiz.
-                meeting_mic = getattr(self, "win_meeting_mic", "")
-                meeting_speaker = getattr(self, "win_meeting_speaker", "")
-                if meeting_mic or meeting_speaker:
-                    lines = []
-                    if meeting_mic:
-                        lines.append(f"🎤 Meet/Zoom MIKROFONI: «{meeting_mic}»")
-                    if meeting_speaker:
-                        lines.append(f"🔊 Meet/Zoom KARNAYI: «{meeting_speaker}»")
-                    lines.append("(yoki ikkalasini «Same as System» qiling)")
-                    self.meet_mic_hint.setText("\n".join(lines))
-                    self.meet_mic_hint.setVisible(True)
+                # Nomlar fon oqimidagi routing tugagach to'ladi — o'shanda
+                # `_routing_applied` yana chaqiradi.
+                self._show_meet_devices_hint()
                 # Tarjima ovozi QAYSI qurilmadan chiqishini aniq aytamiz.
                 # Jonli nosozlik: matn ko'rinadi, ovoz eshitilmaydi — chunki
                 # ilova tizim default'iga (Realtek) chiqaradi, foydalanuvchi
@@ -3188,7 +3260,7 @@ class TranslatorWindow(QWidget):
         # (~6s) kutmasdan, foydalanuvchi videoni darhol eshitsin. Jarayon
         # tugaganda ham yana bir bor tiklanadi (zararsiz).
         if platform.system() == "Windows":
-            self._win_restore_routing()
+            self._win_restore_routing_async()
         self.process.terminate()
         QTimer.singleShot(6000, self._force_stop)
 
@@ -3862,7 +3934,9 @@ class TranslatorWindow(QWidget):
         self.previous_system_input = None
         if platform.system() == "Windows":
             # Stop: Start'da saqlangan default qurilmalarni qaytaramiz.
-            self._win_restore_routing()
+            # FON oqimida — bu yo'l jarayon tugaganda chaqiriladi va GUI
+            # ni bloklamasligi kerak.
+            self._win_restore_routing_async()
             return
         if platform.system() != "Darwin":
             return
