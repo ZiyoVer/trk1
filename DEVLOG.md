@@ -788,3 +788,32 @@ antivirus PowerShell'ni tekshirayotganda C# kompilyatsiya uzoq ketadi.
 Kutish vaqti **30 → 90 soniya**. Chaqiruv fon oqimida — GUI qotmaydi.
 (Foydalanuvchining «antiviruslar bloklayotgandir» degan taxmini shu
 nuqtada haqiqatga eng yaqin.)
+
+## v0.9.82 — Yangi dizayn (foydalanuvchi maketi, 2026-07-29)
+
+Foydalanuvchi maket berdi: «xuddi o'sha logika, faqat manashu dizaynda».
+
+Oyna endi ikkita katta plitka + ikkita panel + pastki tasmadan iborat:
+
+- **«Tarjimani boshlash / Translating»** plitkasi Start va Stop vazifasini
+  BIRGA bajaradi: bosilsa boshlanadi va **firuza rangga** kiradi
+  («Translating», belgisi ■), yana bosilsa to'xtaydi va **oq** holatga
+  qaytadi. Windows 11 «Quick Settings» tugmalari kabi.
+- **«Sifatli tarjima»** plitkasi — yoqilganda ko'k.
+- Ikki panel: chapda eshitilgan gap + til tanlash, o'ngda (och ko'k fonda)
+  tarjima + til tanlash.
+- Pastki tasma: «Meeting tarjimasi» + to'lqin tasviri + «Siz: …».
+
+**MANTIQQA TEGILMADI.** `git diff --stat`: faqat `product_app.py`
+o'zgardi; `translator.py`, `audio.py`, `audio_routing.py`, `winaec.py`,
+`audio_config.ps1` — bittasi ham qo'zg'atilmadi.
+
+Barcha 40 ta widget nomi va signali eskisidek qoldi. Maketda joyi yo'q
+widgetlar (`direction`, `input_device`, `swap_languages_button`,
+`meeting_uz_check`, `output_test_button` va h.k.) `_hidden_hints` —
+KO'RINMAS ota widget ichida yashaydi: kodning boshqa joylari ularga
+matn yozaveradi, ekranda esa chiqmaydi. «Meeting o'zbekcha» va «Sinov»
+tray menyusidan boshqariladi (u yerda allaqachon bor edi).
+
+To'lqin tasviri ATAYLAB statik — taymer yo'q. 0.9.78 dagi qotish aynan
+davriy qayta chizishdan kelib chiqqan edi.

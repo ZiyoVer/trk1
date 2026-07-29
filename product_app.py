@@ -84,6 +84,7 @@ import sounddevice as sd
 from dotenv import dotenv_values
 from PySide6.QtCore import (
     QObject,
+    QRectF,
     QProcess,
     QProcessEnvironment,
     QRectF,
@@ -95,6 +96,7 @@ from PySide6.QtCore import (
 )
 from PySide6.QtGui import (
     QAction,
+    QPainter,
     QActionGroup,
     QColor,
     QCursor,
@@ -107,6 +109,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import (
     QApplication,
+    QSizePolicy,
     QCheckBox,
     QComboBox,
     QDialog,
@@ -175,13 +178,25 @@ from system_audio import (
 
 
 APP_NAME = "Live Translator"
+HEADER_BUTTON_STYLE = (
+    "QPushButton { background: #ffffff; color: #3a3a40; font-size: 16px; padding: 0; "
+    "border: 1px solid #e4e7ec; border-radius: 11px; } "
+    "QPushButton:hover { background: #f2f4f7; } "
+    "QPushButton:pressed { background: #e8eaee; }"
+)
+CLOSE_BUTTON_STYLE = (
+    "QPushButton { background: #ffffff; color: #3a3a40; font-size: 15px; padding: 0; "
+    "border: 1px solid #e4e7ec; border-radius: 11px; } "
+    "QPushButton:hover { background: #fdeceb; color: #c42b1c; border-color: #f5c9c5; } "
+    "QPushButton:pressed { background: #f8dcd9; }"
+)
 CHECKBOX_STYLE = (
     "QCheckBox { color: #9fb0c6; font-size: 11px; font-weight: 600; spacing: 7px; } "
     "QCheckBox::indicator { width: 13px; height: 13px; border-radius: 4px; "
     "border: 1px solid #33456080; background: #131e30; } "
     "QCheckBox::indicator:checked { background: #15845a; border-color: #15845a; }"
 )
-APP_VERSION = "0.9.81"
+APP_VERSION = "0.9.82"
 
 
 def _read_channel() -> str:
@@ -253,6 +268,105 @@ def is_expected_engine_exit(exit_code: int, stop_requested: bool) -> bool:
     """A user-requested process exit is a normal Stop, not a crash."""
 
     return stop_requested or exit_code == 0
+
+
+class Waveform(QWidget):
+    """Pastki tasmadagi to'lqin tasviri. Faqat bezak — TAYMER YO'Q.
+
+    Ataylab statik: 0.9.78 dagi nosozlik davriy qayta chizish GUI'ni
+    tiqib qo'yishi mumkinligini ko'rsatdi. Bu yerda hech qanday davriy
+    ish yo'q, shuning uchun qotish xavfi ham yo'q.
+    """
+
+    BARS = (
+        3, 5, 4, 7, 5, 9, 6, 12, 8, 15, 10, 18, 12, 22, 14, 19, 11, 24, 16, 21,
+        13, 26, 15, 20, 12, 23, 14, 18, 10, 22, 13, 25, 16, 20, 12, 17, 9, 21,
+        13, 24, 15, 19, 11, 16, 8, 13, 6, 10, 5, 7, 4, 5, 3, 4,
+    )
+
+    def __init__(self, parent=None) -> None:  # noqa: ANN001
+        super().__init__(parent)
+        self.setMinimumHeight(30)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+
+    def paintEvent(self, _event) -> None:  # noqa: ANN001
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor("#1a73e8"))
+        count = len(self.BARS)
+        step = max(2.0, self.width() / (count + 2))
+        middle = self.height() / 2
+        for index, value in enumerate(self.BARS):
+            height = max(2.0, value * self.height() / 30.0)
+            x = index * step
+            painter.drawRoundedRect(
+                QRectF(x, middle - height / 2, max(1.6, step * 0.42), height), 1.2, 1.2
+            )
+        painter.drawEllipse(QRectF(count * step, middle - 4, 8, 8))
+
+
+class ActionTile(QFrame):
+    """Keng tugma-plitka: yoqilganda rangli, o'chirilganda oq."""
+
+    clicked = Signal()
+
+    def __init__(self, glyph: str, text: str, accent: str, parent=None) -> None:  # noqa: ANN001
+        super().__init__(parent)
+        self._accent = accent
+        self._active = False
+        self.setFixedHeight(62)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        row = QHBoxLayout(self)
+        row.setContentsMargins(18, 0, 18, 0)
+        row.setSpacing(14)
+        self.icon = QLabel(glyph)
+        self.icon.setStyleSheet("font-size: 19px; background: transparent;")
+        self.label = QLabel(text)
+        self.label.setStyleSheet(
+            "font-size: 16px; font-weight: 600; background: transparent;"
+        )
+        row.addStretch()
+        row.addWidget(self.icon)
+        row.addWidget(self.label)
+        row.addStretch()
+        self._apply()
+
+    def set_active(self, active: bool) -> None:
+        if active == self._active:
+            return
+        self._active = active
+        self._apply()
+
+    def is_active(self) -> bool:
+        return self._active
+
+    def set_text(self, text: str) -> None:
+        self.label.setText(text)
+
+    def _apply(self) -> None:
+        if self._active:
+            self.setStyleSheet(
+                f"ActionTile {{ background: {self._accent}; border: 1px solid {self._accent};"
+                " border-radius: 13px; }"
+            )
+            colour = "#ffffff"
+        else:
+            self.setStyleSheet(
+                "ActionTile { background: #ffffff; border: 1px solid #e4e7ec;"
+                " border-radius: 13px; }"
+            )
+            colour = "#1b1b1f"
+        self.icon.setStyleSheet(
+            f"font-size: 19px; color: {colour}; background: transparent;"
+        )
+        self.label.setStyleSheet(
+            f"font-size: 16px; font-weight: 600; color: {colour}; background: transparent;"
+        )
+
+    def mousePressEvent(self, event) -> None:  # noqa: ANN001
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit()
 
 
 class OutputPickerDialog(QDialog):
@@ -522,7 +636,7 @@ class TranslatorWindow(QWidget):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle(APP_NAME)
-        self.setFixedSize(640, 552)
+        self.setFixedSize(780, 540)
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
             | Qt.WindowType.WindowStaysOnTopHint
@@ -678,69 +792,74 @@ class TranslatorWindow(QWidget):
         self.heartbeat_timer.timeout.connect(self._send_heartbeat)
 
     def _build_ui(self) -> None:
+        """2026-07-29 maketi. Mantiqqa TEGILMAGAN: barcha widget nomlari va
+        signallari eskisidek. Maketda joyi yo'q widgetlar `_hidden_hints`
+        (ko'rinmas ota) ichida yashaydi — kod ularga matn yozaveradi,
+        ekranda chiqmaydi."""
         root = QVBoxLayout(self)
         root.setContentsMargins(10, 10, 10, 10)
         card = QFrame()
         card.setObjectName("card")
         card.setStyleSheet(
             """
-            QFrame#card { background: rgba(10, 17, 30, 248); border-radius: 16px; }
-            QLabel { color: #f8fafc; }
-            QComboBox { background: #162236; color: #f8fafc; border: 1px solid #2d3c54;
-                        border-radius: 8px; padding: 8px 11px; min-height: 24px; }
-            QComboBox:hover { border-color: #52627a; }
-            QComboBox:focus { border-color: #4f83f1; }
-            QComboBox:disabled { background: #111a29; color: #718096; border-color: #243147; }
-            QComboBox QAbstractItemView { background: #162236; color: #f8fafc;
-                                         selection-background-color: #2f6fed; border: 0; }
-            QPushButton { border: 0; border-radius: 8px; padding: 9px 14px;
-                          color: white; font-weight: 700; }
-            QPushButton:focus { border: 1px solid #93b4ff; }
+            QFrame#card { background: #f7f8fa; border-radius: 16px; }
+            QLabel { color: #1b1b1f; background: transparent; }
+            QComboBox { background: #ffffff; color: #1b1b1f; border: 1px solid #e4e7ec;
+                        border-radius: 9px; padding: 6px 12px; min-height: 20px;
+                        font-size: 13.5px; font-weight: 500; }
+            QComboBox:hover { border-color: #c9ced6; }
+            QComboBox::drop-down { border: 0; width: 20px; }
+            QComboBox QAbstractItemView { background: #ffffff; color: #1b1b1f;
+                                         selection-background-color: #e9f0fa;
+                                         selection-color: #1b1b1f; border: 1px solid #e4e7ec; }
+            QPushButton { border: 0; border-radius: 9px; padding: 8px 13px;
+                          color: white; font-weight: 600; }
             """
         )
         root.addWidget(card)
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(20, 16, 20, 18)
-        layout.setSpacing(9)
+        layout.setContentsMargins(18, 16, 18, 16)
+        layout.setSpacing(13)
 
+        self._hidden_hints = QWidget(self)
+        self._hidden_hints.setVisible(False)
+        hidden = QVBoxLayout(self._hidden_hints)
+
+        # ----------------- SARLAVHA -----------------
         header = QHBoxLayout()
-        title = QLabel("LIVE TRANSLATOR")
-        title.setStyleSheet("font-size: 20px; font-weight: 800; letter-spacing: 0.2px;")
-        self.status = QLabel("●  TAYYOR")
-        self.status.setStyleSheet("color: #8fa0b7; font-size: 10px; font-weight: 700;")
+        header.setSpacing(12)
+        logo = QLabel("‖")
+        logo.setFixedSize(44, 44)
+        logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        logo.setStyleSheet(
+            "background: #1a73e8; color: white; border-radius: 22px; "
+            "font-size: 19px; font-weight: 800;"
+        )
+        title = QLabel("Live Translator")
+        title.setStyleSheet("font-size: 24px; font-weight: 700; color: #101114;")
+        self.status = QLabel("●  Tayyor")
+        self.status.setStyleSheet("color: #0f8b96; font-size: 15px; font-weight: 500;")
         settings = QPushButton("⚙")
         settings.setAccessibleName("Sozlamalar")
         settings.setToolTip("Sozlamalar")
-        settings.setFixedSize(36, 34)
-        settings.setStyleSheet(
-            "QPushButton { background: #162236; color: #cbd5e1; font-size: 16px; padding: 0; } "
-            "QPushButton:hover { background: #202f47; color: white; } "
-            "QPushButton:pressed { background: #101a2a; }"
-        )
+        settings.setFixedSize(44, 40)
+        settings.setStyleSheet(HEADER_BUTTON_STYLE)
         settings.clicked.connect(self.edit_settings)
         minimize = QPushButton("–")
         minimize.setAccessibleName("Kichraytirish")
-        minimize.setFixedSize(36, 34)
-        minimize.setToolTip("Kichraytirish")
-        minimize.setStyleSheet(
-            "QPushButton { background: #162236; color: #cbd5e1; font-size: 18px; "
-            "padding: 0px; border-radius: 7px; } "
-            "QPushButton:hover { background: #202f47; color: white; } "
-            "QPushButton:pressed { background: #101a2a; }"
-        )
+        minimize.setToolTip("Kichraytirish — menyu panelida qoladi")
+        minimize.setFixedSize(44, 40)
+        minimize.setStyleSheet(HEADER_BUTTON_STYLE)
         minimize.clicked.connect(self._minimize_window)
         close = QPushButton("✕")
         close.setAccessibleName("Yopish")
-        close.setFixedSize(36, 34)
         close.setToolTip("Yopish")
-        close.setStyleSheet(
-            "QPushButton { background: #1e293b; color: #f8fafc; font-size: 15px; "
-            "padding: 0px; border-radius: 7px; } "
-            "QPushButton:hover { background: #c93c4b; color: white; } "
-            "QPushButton:pressed { background: #9f2f3b; }"
-        )
+        close.setFixedSize(44, 40)
+        close.setStyleSheet(CLOSE_BUTTON_STYLE)
         close.clicked.connect(self.close)
+        header.addWidget(logo)
         header.addWidget(title)
+        header.addSpacing(6)
         header.addWidget(self.status)
         header.addStretch()
         header.addWidget(settings)
@@ -748,24 +867,182 @@ class TranslatorWindow(QWidget):
         header.addWidget(close)
         layout.addLayout(header)
 
+        # ----------------- DRAYVER QATORI -----------------
         self.driver_row = QFrame()
         driver_layout = QHBoxLayout(self.driver_row)
-        driver_layout.setContentsMargins(10, 4, 6, 4)
+        driver_layout.setContentsMargins(14, 8, 10, 8)
         self.driver_label = QLabel("")
         self.driver_label.setWordWrap(True)
+        self.driver_label.setStyleSheet("color: #7a4b00; font-size: 12.5px;")
         self.driver_button = QPushButton("AUDIO DRIVER O‘RNATISH")
-        self.driver_button.setStyleSheet("background: #d97706;")
+        self.driver_button.setStyleSheet("background: #b45309;")
         self.driver_button.clicked.connect(self.install_driver)
         driver_layout.addWidget(self.driver_label, 1)
         driver_layout.addWidget(self.driver_button)
-        self.driver_row.setStyleSheet("background: rgba(180, 83, 9, 85); border-radius: 8px;")
-        # Drayver skani FON oqimida ketadi; tugagunча bu qator bo'sh turib,
-        # oynaning tepasida sababsiz bo'shliq hosil qilardi.
+        self.driver_row.setStyleSheet(
+            "background: #fff4e5; border: 1px solid #ffd8a8; border-radius: 11px;"
+        )
         self.driver_row.setVisible(False)
         layout.addWidget(self.driver_row)
 
-        direction_label = QLabel("Tarjima rejimi")
-        direction_label.setStyleSheet("color: #9aa9bd; font-size: 10px; font-weight: 700;")
+        # ----------------- IKKI KATTA TUGMA -----------------
+        self.start_button = QPushButton("▶  Tarjimani boshlash", self._hidden_hints)
+        self.start_button.clicked.connect(self.start_translator)
+        self.stop_button = QPushButton("■  To‘xtatish", self._hidden_hints)
+        self.stop_button.clicked.connect(self.stop_translator)
+        self.quality_check = QCheckBox("Sifatli tarjima", self._hidden_hints)
+        self.quality_check.setChecked(self.quality_mode)
+        self.quality_check.toggled.connect(self._toggle_quality)
+
+        self.tile_run = ActionTile("▶", "Tarjimani boshlash", "#0f8b96")
+        self.tile_run.clicked.connect(self._toggle_translation)
+        self.tile_quality = ActionTile("✦", "Sifatli tarjima", "#1a73e8")
+        self.tile_quality.set_active(self.quality_mode)
+        self.tile_quality.clicked.connect(
+            lambda: self.quality_check.setChecked(not self.quality_check.isChecked())
+        )
+        tiles = QHBoxLayout()
+        tiles.setSpacing(14)
+        tiles.addWidget(self.tile_run, 1)
+        tiles.addWidget(self.tile_quality, 1)
+        layout.addLayout(tiles)
+
+        # ----------------- IKKI PANEL -----------------
+        self.your_language_select = QComboBox()
+        self.meeting_language_select = QComboBox()
+        for language in TARGET_LANGUAGES:
+            self.your_language_select.addItem(language.name, language.code)
+            self.meeting_language_select.addItem(language.name, language.code)
+        for combo in (self.your_language_select, self.meeting_language_select):
+            combo.setFixedWidth(150)
+            combo.setCursor(Qt.CursorShape.PointingHandCursor)
+
+        self.caption_panel = QFrame()
+        self.caption_panel.setObjectName("captionPanel")
+        self.caption_panel.setStyleSheet(
+            "QFrame#captionPanel { background: #ffffff; border: 1px solid #e4e7ec;"
+            " border-radius: 13px; }"
+        )
+        panes = QHBoxLayout(self.caption_panel)
+        panes.setContentsMargins(0, 0, 0, 0)
+        panes.setSpacing(0)
+
+        heard = QWidget()
+        heard_layout = QVBoxLayout(heard)
+        heard_layout.setContentsMargins(20, 16, 18, 18)
+        heard_layout.setSpacing(16)
+        heard_head = QHBoxLayout()
+        self.source_language = QLabel("\U0001F3A4")
+        self.source_language.setStyleSheet("font-size: 19px; color: #1a73e8;")
+        heard_head.addWidget(self.source_language)
+        heard_head.addStretch()
+        heard_head.addWidget(self.your_language_select)
+        self.source_text = QLabel("Gap kutilmoqda…")
+        self.source_text.setWordWrap(True)
+        self.source_text.setAlignment(
+            Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft
+        )
+        self.source_text.setStyleSheet("font-size: 15px; color: #1b1b1f;")
+        heard_layout.addLayout(heard_head)
+        heard_layout.addWidget(self.source_text, 1)
+
+        translated = QWidget()
+        translated.setObjectName("translatedPane")
+        translated.setStyleSheet(
+            "QWidget#translatedPane { background: #e9f0fa;"
+            " border-top-right-radius: 13px; border-bottom-right-radius: 13px; }"
+        )
+        translated_layout = QVBoxLayout(translated)
+        translated_layout.setContentsMargins(20, 16, 18, 18)
+        translated_layout.setSpacing(16)
+        translated_head = QHBoxLayout()
+        self.target_language = QLabel("文")
+        self.target_language.setStyleSheet(
+            "font-size: 19px; color: #5b3fd4; font-weight: 700;"
+        )
+        translated_head.addWidget(self.target_language)
+        translated_head.addStretch()
+        translated_head.addWidget(self.meeting_language_select)
+        self.target_text = QLabel("Tarjima shu yerda chiqadi…")
+        self.target_text.setWordWrap(True)
+        self.target_text.setAlignment(
+            Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft
+        )
+        self.target_text.setStyleSheet("font-size: 15px; color: #1b1b1f;")
+        translated_layout.addLayout(translated_head)
+        translated_layout.addWidget(self.target_text, 1)
+
+        panes.addWidget(heard, 1)
+        panes.addWidget(translated, 1)
+        layout.addWidget(self.caption_panel, 1)
+
+        # ----------------- PASTKI TASMA -----------------
+        self.duplex_outgoing_caption_panel = QFrame()
+        self.duplex_outgoing_caption_panel.setObjectName("duplexCaption")
+        self.duplex_outgoing_caption_panel.setStyleSheet(
+            "QFrame#duplexCaption { background: #ffffff; border: 1px solid #e4e7ec;"
+            " border-radius: 13px; }"
+        )
+        strip = QHBoxLayout(self.duplex_outgoing_caption_panel)
+        strip.setContentsMargins(20, 10, 20, 10)
+        strip.setSpacing(18)
+        self.duplex_outgoing_caption_title = QLabel("Meeting tarjimasi")
+        self.duplex_outgoing_caption_title.setStyleSheet(
+            "font-size: 14px; color: #1b1b1f;"
+        )
+        self.duplex_outgoing_original_text = QLabel("Siz: gap kutilmoqda…")
+        self.duplex_outgoing_original_text.setStyleSheet(
+            "font-size: 13.5px; color: #1a73e8;"
+        )
+        self.duplex_outgoing_original_text.setAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
+        strip.addWidget(self.duplex_outgoing_caption_title)
+        strip.addWidget(Waveform(), 1)
+        strip.addWidget(self.duplex_outgoing_original_text)
+        layout.addWidget(self.duplex_outgoing_caption_panel)
+
+        # ----------------- KO'RINMAS WIDGETLAR -----------------
+        self.route_hint = QLabel("", self._hidden_hints)
+        self.meet_mic_hint = QLabel("", self._hidden_hints)
+        self.update_hint = QLabel("", self._hidden_hints)
+        self.update_button = QPushButton("", self._hidden_hints)
+        self.update_button.clicked.connect(self._install_update)
+        self.language_label = QLabel("", self._hidden_hints)
+        self.signal_label = QLabel("", self._hidden_hints)
+        self._legacy_lang_frame = QFrame(self._hidden_hints)
+        self.duplex_outgoing_language_panel = QFrame(self._hidden_hints)
+        self.duplex_outgoing_audio_panel = QFrame(self._hidden_hints)
+        self.duplex_outgoing_target_text = QLabel("", self._hidden_hints)
+        self.meeting_uz_check = QCheckBox("Meeting o‘zbekcha", self._hidden_hints)
+        self.meeting_uz_check.setChecked(self.meeting_uz)
+        self.meeting_uz_check.toggled.connect(self._toggle_meeting_uz)
+        self.output_test_button = QPushButton("▶ Sinov", self._hidden_hints)
+        self.output_test_button.clicked.connect(self._play_output_test)
+
+        self.input_device = QComboBox(self._hidden_hints)
+        self.output_device = QComboBox(self._hidden_hints)
+        self.duplex_outgoing_input = QComboBox(self._hidden_hints)
+        self.duplex_outgoing_output = QComboBox(self._hidden_hints)
+        self.duplex_outgoing_output.setPlaceholderText("BlackHole 16ch kerak")
+        self.input_device.currentIndexChanged.connect(self._audio_route_changed)
+        self.output_device.currentIndexChanged.connect(self._audio_route_changed)
+        self.output_device.activated.connect(self._output_device_picked)
+        self.duplex_outgoing_input.currentIndexChanged.connect(self._audio_route_changed)
+        self.duplex_outgoing_output.currentIndexChanged.connect(self._audio_route_changed)
+
+        self.source_language_select = QComboBox(self._hidden_hints)
+        self.target_language_select = QComboBox(self._hidden_hints)
+        self.duplex_outgoing_source = QComboBox(self._hidden_hints)
+        self.duplex_outgoing_target = QComboBox(self._hidden_hints)
+        for language in SOURCE_LANGUAGES:
+            self.source_language_select.addItem(language.name, language.code)
+            self.duplex_outgoing_source.addItem(language.name, language.code)
+        for language in TARGET_LANGUAGES:
+            self.target_language_select.addItem(language.name, language.code)
+            self.duplex_outgoing_target.addItem(language.name, language.code)
+        self.swap_languages_button = QPushButton("⇄", self._hidden_hints)
+        self.swap_languages_button.clicked.connect(self._swap_languages)
         self.direction = DirectionSelector(
             [
                 (
@@ -777,335 +1054,23 @@ class TranslatorWindow(QWidget):
                     ),
                 )
                 for mode in APP_MODES
-            ]
+            ],
+            self._hidden_hints,
         )
-        layout.addWidget(direction_label)
-        direction_label.setVisible(False)
-        layout.addWidget(self.direction)
-        # Faqat ikki tomonlama — rejim tanlash ko'rinmaydi.
-        self.direction.setVisible(False)
-
-        # === TILLAR — sodda panel (faqat ikki tomonlama) ===
-        self.language_label = QLabel("Tillar")
-        self.language_label.setStyleSheet("color: #98a8bd; font-size: 11px; font-weight: 650;")
-
-        simple_row = QHBoxLayout()
-        simple_row.setSpacing(8)
-        your_group = QVBoxLayout()
-        your_group.setSpacing(4)
-        your_label = QLabel("Mening tilim")
-        your_label.setStyleSheet("color: #8798af; font-size: 10px; font-weight: 600;")
-        self.your_language_select = QComboBox()
-        self.your_language_select.setToolTip(
-            "Siz eshitadigan va gapiradigan til (masalan O‘zbekcha)"
-        )
-        for language in TARGET_LANGUAGES:
-            self.your_language_select.addItem(language.name, language.code)
-        your_group.addWidget(your_label)
-        your_group.addWidget(self.your_language_select)
-
-        arrow_group = QVBoxLayout()
-        arrow_group.setSpacing(4)
-        arrow_spacer = QLabel("")
-        arrow_spacer.setFixedHeight(11)
-        simple_arrow = QLabel("→")
-        simple_arrow.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        simple_arrow.setFixedWidth(28)
-        simple_arrow.setStyleSheet("color: #7dd3fc; font-size: 16px;")
-        arrow_group.addWidget(arrow_spacer)
-        arrow_group.addWidget(simple_arrow)
-
-        meeting_group = QVBoxLayout()
-        meeting_group.setSpacing(4)
-        meeting_label = QLabel("Tarjima tili")
-        meeting_label.setStyleSheet("color: #8798af; font-size: 10px; font-weight: 600;")
-        self.meeting_language_select = QComboBox()
-        self.meeting_language_select.setToolTip(
-            "Siz gapirganda boshqa odamga shu tilda yetkaziladi (masalan Ingliz)"
-        )
-        for language in TARGET_LANGUAGES:
-            self.meeting_language_select.addItem(language.name, language.code)
-        meeting_group.addWidget(meeting_label)
-        meeting_group.addWidget(self.meeting_language_select)
-
-        simple_row.addLayout(your_group, 1)
-        simple_row.addLayout(arrow_group)
-        simple_row.addLayout(meeting_group, 1)
-        layout.addLayout(simple_row)
-
-        self.meeting_uz_check = QCheckBox(
-            "Meeting o‘zbekcha — hammani jonli, o‘z ovozida eshitaman"
-        )
-        self.meeting_uz_check.setToolTip(
-            "Meetingdagi odamlar o‘zbekcha gapirsa yoqing.\n"
-            "Kiruvchi tarjima o‘chadi — meeting ovozi karnaydan jonli "
-            "eshitiladi.\nSizning gapingiz esa avvalgidek tarjima bo‘lib "
-            "meetingga boradi."
-        )
-        self.meeting_uz_check.setStyleSheet(CHECKBOX_STYLE)
-        self.meeting_uz_check.setChecked(self.meeting_uz)
-        self.meeting_uz_check.toggled.connect(self._toggle_meeting_uz)
-        layout.addWidget(self.meeting_uz_check)
-
-        self.quality_check = QCheckBox(
-            "Sifatli tarjima — gapni oxirigacha kutib, tabiiy o‘giradi"
-        )
-        self.quality_check.setToolTip(
-            "Yoqilganda dastur gap tugashini kutadi va TO‘LIQ gapni "
-            "tarjima qiladi.\nMa’no ancha to‘g‘ri chiqadi, lekin gap "
-            "tugagandan keyin 1-2 soniya kechikadi.\nO‘chiq bo‘lsa "
-            "hozirgidek: tezroq, lekin bo‘lak-bo‘lak."
-        )
-        self.quality_check.setStyleSheet(CHECKBOX_STYLE)
-        self.quality_check.setChecked(self.quality_mode)
-        self.quality_check.toggled.connect(self._toggle_quality)
-        layout.addWidget(self.quality_check)
-
-
-        # === Eski til-widgetlari: YASHIRIN. Mavjud ichki logika (mode_pairs,
-        # ishga tushirish) shular orqali ishlaydi; foydalanuvchi esa
-        # yuqoridagi sodda panelni ko'radi. ===
-        self._legacy_lang_frame = QFrame()
-        legacy_layout = QVBoxLayout(self._legacy_lang_frame)
-        legacy_layout.setContentsMargins(0, 0, 0, 0)
-        self.source_language_select = QComboBox()
-        for language in SOURCE_LANGUAGES:
-            self.source_language_select.addItem(language.name, language.code)
-        self.target_language_select = QComboBox()
-        for language in TARGET_LANGUAGES:
-            self.target_language_select.addItem(language.name, language.code)
-        self.swap_languages_button = QPushButton("⇄")
-        self.swap_languages_button.clicked.connect(self._swap_languages)
-        self.duplex_outgoing_language_panel = QFrame()
-        self.duplex_outgoing_source = QComboBox()
-        for language in SOURCE_LANGUAGES:
-            self.duplex_outgoing_source.addItem(language.name, language.code)
-        self.duplex_outgoing_target = QComboBox()
-        for language in TARGET_LANGUAGES:
-            self.duplex_outgoing_target.addItem(language.name, language.code)
-        for _legacy_widget in (
-            self.source_language_select,
-            self.target_language_select,
-            self.swap_languages_button,
-            self.duplex_outgoing_language_panel,
-            self.duplex_outgoing_source,
-            self.duplex_outgoing_target,
+        for widget in (
+            self.route_hint, self.meet_mic_hint, self.update_hint, self.update_button,
+            self.start_button, self.stop_button, self.input_device, self.output_device,
+            self.duplex_outgoing_input, self.duplex_outgoing_output,
+            self.source_language_select, self.target_language_select,
+            self.duplex_outgoing_source, self.duplex_outgoing_target,
+            self.swap_languages_button, self.direction, self.quality_check,
+            self.meeting_uz_check, self.output_test_button, self.language_label,
+            self.signal_label, self._legacy_lang_frame,
+            self.duplex_outgoing_language_panel, self.duplex_outgoing_audio_panel,
+            self.duplex_outgoing_target_text,
         ):
-            legacy_layout.addWidget(_legacy_widget)
-        layout.addWidget(self._legacy_lang_frame)
-        self._legacy_lang_frame.setVisible(False)
+            hidden.addWidget(widget)
 
-        self.signal_label = QLabel("OVOZ YO‘LI  ·  QAYERDAN → QAYERGA")
-        self.signal_label.setStyleSheet("color: #74859d; font-size: 9px; font-weight: 700;")
-        layout.addWidget(self.signal_label)
-        self.signal_label.setVisible(False)
-
-        input_row = QHBoxLayout()
-        input_label = QLabel("MANBA")
-        input_label.setFixedWidth(76)
-        input_label.setStyleSheet("color: #a9b8cc; font-size: 10px; font-weight: 700;")
-        self.input_device = QComboBox()
-        self.input_device.setToolTip("Tarjima qilinadigan ovoz qayerdan olinadi")
-        self.input_device.currentIndexChanged.connect(self._audio_route_changed)
-        input_row.addWidget(input_label)
-        input_row.addWidget(self.input_device, 1)
-        layout.addLayout(input_row)
-        input_label.setVisible(False)
-        self.input_device.setVisible(False)
-
-        output_row = QHBoxLayout()
-        # KO'RINADI (v0.9.49): kompyuterda bir nechta chiqish bo'lsa (Realtek
-        # karnay + monitor audio + naushnik), ilova qaysi birini ODAM
-        # eshitayotganini bila olmaydi — tizim default'i noto'g'ri bo'lishi
-        # mumkin (real holat: default Realtek edi, foydalanuvchi esa monitor
-        # orqali eshitardi -> tarjima ovozi "yo'qolgan"dek tuyulardi).
-        output_label = QLabel("ESHITAMAN")
-        output_label.setFixedWidth(76)
-        output_label.setStyleSheet("color: #a9b8cc; font-size: 10px; font-weight: 700;")
-        self.output_device = QComboBox()
-        self.output_device.setToolTip(
-            "Tarjima ovozi shu qurilmadan eshitiladi (karnay/naushnik/monitor)"
-        )
-        self.output_device.currentIndexChanged.connect(self._audio_route_changed)
-        # activated — FAQAT foydalanuvchi o'zi tanlaganda chiqadi (dastur
-        # ro'yxatni yangilaganda emas), shuning uchun aynan shu bilan
-        # "foydalanuvchi tanlovi" belgilanadi.
-        self.output_device.activated.connect(self._output_device_picked)
-        # SINOV OVOZI: "matn ko'rinadi, ovoz eshitilmaydi" nosozligining
-        # sababi deyarli doim NOTO'G'RI qurilma bo'lgan. Endi Start bosmasdan
-        # bir tugma bilan tekshiriladi: ovoz eshitilsa — qurilma to'g'ri.
-        self.output_test_button = QPushButton("▶ Sinov")
-        self.output_test_button.setFixedWidth(80)
-        self.output_test_button.setToolTip(
-            "Tanlangan qurilmaga qisqa sinov ovozi chiqaradi"
-        )
-        self.output_test_button.clicked.connect(self._play_output_test)
-        output_row.addWidget(output_label)
-        output_row.addWidget(self.output_device, 1)
-        output_row.addWidget(self.output_test_button)
-        layout.addLayout(output_row)
-
-        self.duplex_outgoing_audio_panel = QFrame()
-        duplex_audio_layout = QVBoxLayout(self.duplex_outgoing_audio_panel)
-        duplex_audio_layout.setContentsMargins(0, 0, 0, 0)
-        duplex_audio_layout.setSpacing(6)
-        duplex_audio_title = QLabel("GAPIRISH OVOZ YO‘LI  ·  MIKROFON → ZOOM")
-        duplex_audio_title.setStyleSheet(
-            "color: #60a5fa; font-size: 9px; font-weight: 800;"
-        )
-        duplex_audio_layout.addWidget(duplex_audio_title)
-        duplex_input_row = QHBoxLayout()
-        duplex_input_label = QLabel("MIKROFON")
-        duplex_input_label.setFixedWidth(76)
-        duplex_input_label.setStyleSheet(
-            "color: #a9b8cc; font-size: 10px; font-weight: 700;"
-        )
-        self.duplex_outgoing_input = QComboBox()
-        self.duplex_outgoing_input.setToolTip("Sizning fizik mikrofoningiz")
-        self.duplex_outgoing_input.currentIndexChanged.connect(self._audio_route_changed)
-        duplex_input_row.addWidget(duplex_input_label)
-        duplex_input_row.addWidget(self.duplex_outgoing_input, 1)
-        duplex_audio_layout.addLayout(duplex_input_row)
-        duplex_output_row = QHBoxLayout()
-        duplex_output_label = QLabel("MEETING")
-        duplex_output_label.setFixedWidth(76)
-        duplex_output_label.setStyleSheet(
-            "color: #a9b8cc; font-size: 10px; font-weight: 700;"
-        )
-        self.duplex_outgoing_output = QComboBox()
-        self.duplex_outgoing_output.setPlaceholderText("BlackHole 16ch kerak")
-        self.duplex_outgoing_output.setToolTip(
-            "Zoom microphone sifatida ishlaydigan ikkinchi virtual qurilma"
-        )
-        self.duplex_outgoing_output.currentIndexChanged.connect(self._audio_route_changed)
-        duplex_output_row.addWidget(duplex_output_label)
-        duplex_output_row.addWidget(self.duplex_outgoing_output, 1)
-        duplex_audio_layout.addLayout(duplex_output_row)
-        layout.addWidget(self.duplex_outgoing_audio_panel)
-        self.duplex_outgoing_audio_panel.setVisible(False)
-
-        # YASHIRIN IDISH. 0.9.74 da ogohlantirishlar layoutdan olib
-        # tashlangan edi, lekin kodning ~40 joyida hamon setVisible(True)
-        # chaqiriladi. Qt'da otasi ham layouti ham yo'q widget ko'rsatilsa —
-        # u ALOHIDA OYNA bo'lib chiqadi (jonli nosozlik: "exo bekor qilish…"
-        # degan kichkina oynacha o'z-o'zidan paydo bo'lardi).
-        # Yechim: ularni YASHIRIN ota widgetga bog'laymiz. Qt qoidasi bo'yicha
-        # otasi yashirin bo'lsa, bola setVisible(True) da ham ko'rinmaydi —
-        # ya'ni eski chaqiruvlarni birma-bir o'chirish shart emas.
-        self._hidden_hints = QWidget(self)
-        self._hidden_hints.setVisible(False)
-
-        self.route_hint = QLabel("", self._hidden_hints)
-        self.route_hint.setWordWrap(True)
-        # Sariq quti olib tashlandi (bo'sh bo'lsa ham ko'rinardi). Faqat
-        # matn bo'lganda ko'rinadigan oddiy yozuv.
-        self.route_hint.setStyleSheet(
-            "color: #ffd166; font-size: 11px; font-weight: 600;"
-        )
-        self.route_hint.setVisible(False)
-        # EKRANGA QO'SHILMAYDI: foydalanuvchi ogohlantirish yozuvlarini olib
-        # tashlashni so'radi. Ob'ekt saqlanadi (kodning ko'p joyida matn
-        # yoziladi) — endi u faqat ichki holat, ekranda ko'rinmaydi.
-
-        # Meet/Zoom'da qaysi mikrofon tanlanishi kerakligi — eng ko'p
-        # uchraydigan nosozlik shu (suhbatdosh hech narsa eshitmaydi).
-        self.meet_mic_hint = QLabel("", self._hidden_hints)
-        self.meet_mic_hint.setWordWrap(True)
-        self.meet_mic_hint.setStyleSheet(
-            "color: #7dd3fc; font-size: 11px; font-weight: 600;"
-        )
-        self.meet_mic_hint.setVisible(False)
-        # Bu ham ekranga qo'shilmaydi (yuqoridagi sabab).
-
-        # Yangilanish xabari va tugmasi (yordam serveridan bilinadi).
-        self.update_hint = QLabel("")
-        self.update_hint.setWordWrap(True)
-        self.update_hint.setStyleSheet(
-            "color: #86efac; font-size: 11px; font-weight: 600;"
-        )
-        self.update_hint.setVisible(False)
-        layout.addWidget(self.update_hint)
-        self.update_button = QPushButton("")
-        self.update_button.setVisible(False)
-        self.update_button.clicked.connect(self._install_update)
-        layout.addWidget(self.update_button)
-
-        self.caption_panel = QFrame()
-        self.caption_panel.setObjectName("captionPanel")
-        self.caption_panel.setStyleSheet(
-            "QFrame#captionPanel { background: #0f1a2a; border-radius: 11px; }"
-        )
-        caption_layout = QVBoxLayout(self.caption_panel)
-        caption_layout.setContentsMargins(13, 10, 13, 12)
-        caption_layout.setSpacing(5)
-        self.source_language = QLabel("Eshitildi  ·  EN")
-        self.source_language.setStyleSheet("color: #8fa0b7; font-size: 9px; font-weight: 700;")
-        self.source_text = QLabel("Gap kutilmoqda…")
-        self.source_text.setWordWrap(True)
-        self.source_text.setMinimumHeight(34)
-        self.source_text.setStyleSheet("color: #d8e0eb; font-size: 13px; font-weight: 600;")
-        caption_layout.addWidget(self.source_language)
-        caption_layout.addWidget(self.source_text)
-
-        self.target_language = QLabel("Tarjima  ·  O‘ZBEKCHA")
-        self.target_language.setStyleSheet("color: #94a3b8; font-size: 9px; font-weight: 700;")
-        self.target_text = QLabel("Tarjima shu yerda chiqadi…")
-        self.target_text.setWordWrap(True)
-        self.target_text.setMinimumHeight(38)
-        self.target_text.setStyleSheet("color: #f1f5f9; font-size: 15px; font-weight: 650;")
-        caption_layout.addWidget(self.target_language)
-        caption_layout.addWidget(self.target_text)
-        layout.addWidget(self.caption_panel)
-
-        self.duplex_outgoing_caption_panel = QFrame()
-        self.duplex_outgoing_caption_panel.setObjectName("duplexCaption")
-        self.duplex_outgoing_caption_panel.setStyleSheet(
-            "QFrame#duplexCaption { background: #0f1a2a; border-radius: 11px; }"
-        )
-        duplex_caption_layout = QVBoxLayout(self.duplex_outgoing_caption_panel)
-        duplex_caption_layout.setContentsMargins(13, 10, 13, 12)
-        duplex_caption_layout.setSpacing(3)
-        self.duplex_outgoing_caption_title = QLabel("Meeting’ga ketayotgan tarjima")
-        self.duplex_outgoing_caption_title.setStyleSheet(
-            "color: #8fa0b7; font-size: 9px; font-weight: 700;"
-        )
-        self.duplex_outgoing_original_text = QLabel("Siz: gap kutilmoqda…")
-        self.duplex_outgoing_original_text.setWordWrap(True)
-        self.duplex_outgoing_original_text.setStyleSheet(
-            "color: #cbd5e1; font-size: 11px; font-weight: 600;"
-        )
-        self.duplex_outgoing_target_text = QLabel("Tarjima: shu yerda chiqadi…")
-        self.duplex_outgoing_target_text.setWordWrap(True)
-        self.duplex_outgoing_target_text.setStyleSheet(
-            "color: #f1f5f9; font-size: 13px; font-weight: 650;"
-        )
-        duplex_caption_layout.addWidget(self.duplex_outgoing_caption_title)
-        duplex_caption_layout.addWidget(self.duplex_outgoing_original_text)
-        duplex_caption_layout.addWidget(self.duplex_outgoing_target_text)
-        layout.addWidget(self.duplex_outgoing_caption_panel)
-
-        # Ortiqcha vertikal joy shu yerga yig'iladi (yuqoridagi label/panellar
-        # cho'zilmaydi) — tugmalar doim pastda, interfeys ixcham.
-        layout.addStretch(1)
-
-        actions = QHBoxLayout()
-        actions.setSpacing(9)
-        self.start_button = QPushButton("▶  Tarjimani boshlash")
-        self.start_button.setAccessibleName("Tarjimani boshlash")
-        self.start_button.setMinimumHeight(46)
-        self.start_button.setStyleSheet(
-            "QPushButton { background: #15845a; font-size: 13px; } "
-            "QPushButton:hover { background: #1a9d6b; }"
-        )
-        self.start_button.clicked.connect(self.start_translator)
-        self.stop_button = QPushButton("■  To‘xtatish")
-        self.stop_button.setAccessibleName("Tarjimani to‘xtatish")
-        self.stop_button.setMinimumHeight(46)
-        self.stop_button.setStyleSheet("background: #334155; color: #94a3b8;")
-        self.stop_button.clicked.connect(self.stop_translator)
-        actions.addWidget(self.start_button)
-        actions.addWidget(self.stop_button)
-        layout.addLayout(actions)
         initial_index = next(
             index
             for index, mode in enumerate(APP_MODES)
@@ -1135,17 +1100,26 @@ class TranslatorWindow(QWidget):
         self._build_tray()
         self._sync_mode_ui(apply_devices=False)
         self._refresh_audio_devices()
-        # Ishga tushganda: eski sessiyadan kabel(lar)da qolib ketgan tizim
-        # qurilmalari fizikka qaytariladi. Start bosilganda kerakli kabelga
-        # o'tadi, Stop'da yana fizikka qaytadi (2026-07-22 O'ktam talabi).
         self._ensure_physical_defaults()
         self._set_controls(running=False)
+        self._sync_tiles()
 
-    # ------------------------------------------------------------------
-    # Menyu paneli (macOS status bar) — oynani ochmasdan boshqarish
-    # ------------------------------------------------------------------
+    def _toggle_translation(self) -> None:
+        """«Translating» plitkasi: bosilsa boshlaydi, yana bosilsa to'xtatadi."""
+        if self.process is not None:
+            self.stop_translator()
+        else:
+            self.start_translator()
 
-    @staticmethod
+    def _sync_tiles(self) -> None:
+        """Plitkalarni haqiqiy holatga moslaydi."""
+        with suppress(Exception):
+            running = self.process is not None
+            self.tile_run.set_active(running)
+            self.tile_run.set_text("Translating" if running else "Tarjimani boshlash")
+            self.tile_run.icon.setText("■" if running else "▶")
+            self.tile_quality.set_active(getattr(self, "quality_mode", False))
+
     def _tray_pixmap(size: int = 22) -> QIcon:
         """Menyu paneli uchun template ikon (qora + shaffof).
 
@@ -1507,6 +1481,7 @@ class TranslatorWindow(QWidget):
         self.settings.setValue("translation/quality", "true" if enabled else "false")
         self.settings.sync()
         print(f"[UI] Sifatli tarjima: {'YOQILDI' if enabled else 'o‘chirildi'}", flush=True)
+        self._sync_tiles()
         if self.process is not None and self.tray is not None:
             # Rejim dvigatel ishga tushganda tanlanadi — jonli almashtirib
             # bo'lmaydi (butun tarjima zanjiri boshqacha quriladi).
@@ -2708,8 +2683,8 @@ class TranslatorWindow(QWidget):
             captions["target"] = ""
         self.duplex_outgoing_original_text.setText("Siz: gap kutilmoqda…")
         self.duplex_outgoing_target_text.setText("Tarjima: shu yerda chiqadi…")
-        self.source_language.setText(f"Eshitildi  ·  {language_caption(pair.source)}")
-        self.target_language.setText(f"Tarjima  ·  {language_caption(pair.target)}")
+        self.source_language.setText("\U0001F3A4")
+        self.target_language.setText("文")
         self.source_text.setText("Gap kutilmoqda…")
         self.target_text.setText("Tarjima shu yerda chiqadi…")
 
@@ -2735,10 +2710,10 @@ class TranslatorWindow(QWidget):
         duplex = mode == "duplex"
         self.duplex_outgoing_language_panel.setVisible(duplex)
         self.duplex_outgoing_audio_panel.setVisible(False)
-        self.duplex_outgoing_caption_panel.setVisible(duplex)
+        self.duplex_outgoing_caption_panel.setVisible(True)
         self.language_label.setText("Tillar")
         # 530 → 596: «Meeting o'zbekcha» belgisi va navbat ko'rsatkichi.
-        self.setFixedSize(640, 552)
+        self.setFixedSize(780, 540)
         self._sync_meeting_uz_widgets()
         self._reset_captions()
         if apply_devices:
@@ -3147,6 +3122,8 @@ class TranslatorWindow(QWidget):
         self._last_ready_state = ready
         self.start_button.setEnabled(not running and ready)
         self.stop_button.setEnabled(running)
+        # Plitkalar haqiqiy holatni ko'rsatsin (Start bosilgach rangli bo'ladi).
+        self._sync_tiles()
         self.direction.setEnabled(not running)
         self.source_language_select.setEnabled(not running)
         self.target_language_select.setEnabled(not running)
