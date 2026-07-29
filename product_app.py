@@ -181,7 +181,7 @@ CHECKBOX_STYLE = (
     "border: 1px solid #33456080; background: #131e30; } "
     "QCheckBox::indicator:checked { background: #15845a; border-color: #15845a; }"
 )
-APP_VERSION = "0.9.76"
+APP_VERSION = "0.9.77"
 
 
 def _read_channel() -> str:
@@ -989,7 +989,18 @@ class TranslatorWindow(QWidget):
         layout.addWidget(self.duplex_outgoing_audio_panel)
         self.duplex_outgoing_audio_panel.setVisible(False)
 
-        self.route_hint = QLabel("")
+        # YASHIRIN IDISH. 0.9.74 da ogohlantirishlar layoutdan olib
+        # tashlangan edi, lekin kodning ~40 joyida hamon setVisible(True)
+        # chaqiriladi. Qt'da otasi ham layouti ham yo'q widget ko'rsatilsa —
+        # u ALOHIDA OYNA bo'lib chiqadi (jonli nosozlik: "exo bekor qilish…"
+        # degan kichkina oynacha o'z-o'zidan paydo bo'lardi).
+        # Yechim: ularni YASHIRIN ota widgetga bog'laymiz. Qt qoidasi bo'yicha
+        # otasi yashirin bo'lsa, bola setVisible(True) da ham ko'rinmaydi —
+        # ya'ni eski chaqiruvlarni birma-bir o'chirish shart emas.
+        self._hidden_hints = QWidget(self)
+        self._hidden_hints.setVisible(False)
+
+        self.route_hint = QLabel("", self._hidden_hints)
         self.route_hint.setWordWrap(True)
         # Sariq quti olib tashlandi (bo'sh bo'lsa ham ko'rinardi). Faqat
         # matn bo'lganda ko'rinadigan oddiy yozuv.
@@ -1003,7 +1014,7 @@ class TranslatorWindow(QWidget):
 
         # Meet/Zoom'da qaysi mikrofon tanlanishi kerakligi — eng ko'p
         # uchraydigan nosozlik shu (suhbatdosh hech narsa eshitmaydi).
-        self.meet_mic_hint = QLabel("")
+        self.meet_mic_hint = QLabel("", self._hidden_hints)
         self.meet_mic_hint.setWordWrap(True)
         self.meet_mic_hint.setStyleSheet(
             "color: #7dd3fc; font-size: 11px; font-weight: 600;"

@@ -570,3 +570,27 @@ qayta qurish uchun biroz erkinlik kerak.
 
 Faqat «Sifatli tarjima» belgisi yoqilganda ishlaydi — odatdagi rejimga
 tegilmadi. Mikrofon/qurilma qatlamiga ham tegilmadi (faqat matn ko'rsatmasi).
+
+## v0.9.77 — REGRESSIYA TUZATILDI: ogohlantirish alohida oyna bo'lib chiqardi
+
+Foydalanuvchi: «nega alohida oynachada bitta ekrancha chiqib qolyapti —
+exo bekor qilish, tugma bosmasdan gapiring deb».
+
+Sabab — mening 0.9.74 dagi xatoyim. Ogohlantirish yozuvlari layoutdan olib
+tashlangan edi (`layout.addWidget` chaqiruvi o'chirildi), lekin kodning ~40
+joyida hamon `route_hint.setVisible(True)` chaqiriladi. Qt qoidasi: **otasi
+ham, layouti ham yo'q widget ko'rsatilsa — u alohida TOP-LEVEL OYNA bo'lib
+chiqadi.** Shuning uchun Start bosilganda ekranda kichkina mustaqil oyna
+paydo bo'lardi.
+
+Tuzatish: yozuvlar YASHIRIN ota widgetga (`_hidden_hints`) bog'landi. Qt'da
+otasi yashirin bo'lsa bola `setVisible(True)` da ham ko'rinmaydi — ya'ni
+eski chaqiruvlarni birma-bir izlab o'chirish shart emas (bu 40 joyda
+tegish demak edi, keraksiz xavf).
+
+Tekshirildi: `setVisible(True)` dan keyin `isWindow()=False`,
+`isVisible()=False`, yangi top-level oyna soni **0**.
+
+SABOQ: widget'ni layoutdan olib tashlaganda uni ko'rsatadigan chaqiruvlar
+qolsa, u yo'qolmaydi — mustaqil oynaga aylanadi. To'g'ri yo'l — yashirin
+otaga bog'lash.
