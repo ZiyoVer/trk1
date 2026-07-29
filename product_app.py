@@ -181,7 +181,7 @@ CHECKBOX_STYLE = (
     "border: 1px solid #33456080; background: #131e30; } "
     "QCheckBox::indicator:checked { background: #15845a; border-color: #15845a; }"
 )
-APP_VERSION = "0.9.75"
+APP_VERSION = "0.9.76"
 
 
 def _read_channel() -> str:

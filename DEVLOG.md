@@ -540,3 +540,33 @@ Qismlar orasiga 80 ms pauza qo'yiladi, sun'iy ulanish eshitilmasin.
 - **Asl ovozni 3% da ostida qoldirish** — ularda mikrofon yo'q. Bizda o'sha
   past ovoz mikrofonga tushib, boshqalarning gapi qayta tarjima bo'lardi
   (2026-07-28 Zoom nosozligining aynan o'zi).
+
+## v0.9.76 — «Sifatli» rejim: tarjima emas, QAYTA QURISH
+
+Foydalanuvchi: «inglizcha gapni qaytadan o'zbekchaga tuzib beradigan
+qilsak, chiroyliroq va tabiiy bo'ladi — aynan o'sha tugma bosilganda».
+
+Oldingi ko'rsatma umumiy edi («tabiiy tarjima qil») va model manba gapning
+TUZILISHIGA yopishib qolardi — natija to'g'ri, lekin «tarjimadek»
+eshitilardi. Endi usul aniq aytilgan:
+
+1. avval gapning MA'NOSINI tushun;
+2. o'sha ma'noni o'sha tilda gapiradigan odam qanday aytsa, shunday qur;
+3. so'zma-so'z ag'darish g'aliz chiqsa — gapni **noldan qayta tuz**.
+
+Qo'shilgan qoidalar: og'zaki uslub (rasmiy-kitobiy emas), ish joyida
+haqiqatan ishlatiladigan so'zlar (odatiy o'zlashmalar ham) noyob kitobiy
+muqobil o'rniga; passiv va uzun ot zanjirlari oddiy aktiv gapga
+aylantiriladi; «uh, you know» kabi to'ldiruvchilar tashlanadi; ismlar,
+raqamlar, sanalar aynan saqlanadi.
+
+**O'zbekcha uchun alohida blok** (target=uz bo'lganda qo'shiladi): fe'l gap
+OXIRIDA keladi — ingliz/rus tartibini ko'chirmaslik; kalka va rasmiy-idora
+qurilmalaridan qochish; raqam va sanalarni o'zbekcha o'qish. Asosiy muammo
+aynan shu tilda edi.
+
+`temperature` 0.3 → 0.45: 0.3 da model manba tuzilishiga yopishib qolardi;
+qayta qurish uchun biroz erkinlik kerak.
+
+Faqat «Sifatli tarjima» belgisi yoqilganda ishlaydi — odatdagi rejimga
+tegilmadi. Mikrofon/qurilma qatlamiga ham tegilmadi (faqat matn ko'rsatmasi).

@@ -154,19 +154,53 @@ class SentenceBuffer:
         return current
 
 
-def quality_instruction(source: str, target: str) -> str:
-    """«Sifatli» rejim uchun ko'rsatma — TABIIY tarjima, so'zma-so'z emas."""
-    return (
-        f"You translate meeting speech from {source} into {target}. "
-        f"Write the way a fluent native {target} speaker would actually say "
-        "it out loud — natural word order, natural connectors, no calques. "
-        "Never translate word by word. Keep names, numbers and dates exact. "
-        "Keep the speaker's tone (formal stays formal). Do not explain, do "
-        "not add or remove information, do not answer questions, do not add "
-        "quotation marks. Output ONLY the translation, nothing else. "
+def quality_instruction(source: str, target: str, target_code: str = "") -> str:
+    """«Sifatli» rejim ko'rsatmasi — TARJIMA emas, QAYTA QURISH.
+
+    Foydalanuvchi talabi: «inglizcha gapni qaytadan o'zbekchaga tuzib
+    beradigan qilsak, chiroyliroq va tabiiy bo'ladi».
+
+    Farqi shunda: model avval gapning MA'NOSINI tushunadi, keyin o'sha
+    ma'noni o'sha tilda gapiradigan odam qanday aytsa, shunday quradi.
+    Manba gapning tuzilishi saqlanmaydi — aynan shu «tarjimadek» eshitilish
+    sababi edi.
+
+    O'zbekcha uchun alohida qoidalar bor, chunki asosiy muammo shu tilda:
+    fe'l gap oxirida keladi va ingliz/rus tuzilishini ko'chirish g'aliz
+    natija beradi."""
+    rules = [
+        f"You RE-EXPRESS meeting speech in {target}. You are not a "
+        "word-by-word translator.",
+        f"Method: first understand what the speaker MEANS, then say that "
+        f"meaning the way a native {target} speaker would say it out loud "
+        "in a work meeting. Rebuild the sentence from scratch if a literal "
+        "rendering would sound foreign.",
+        f"Use natural {target} word order and connectors. Do not mirror the "
+        "structure of the original sentence.",
+        "Spoken register, not written or official style. Use the words "
+        "people actually say at work — including loanwords that are normal "
+        "in everyday speech — instead of rare bookish equivalents.",
+        "Turn passive constructions and long noun chains into normal active "
+        "sentences.",
+        "Drop fillers and false starts (uh, you know, I mean) — they carry "
+        "no meaning.",
+        "Keep names, numbers, dates, units and terms exact.",
+        "Keep the speaker's tone and level of politeness.",
+        "Never add, remove or explain anything. Never answer a question that "
+        "was asked — only re-express it. No quotation marks, no commentary.",
+        f"Output ONLY the {target} sentence, nothing else.",
         "Earlier lines are given as context so pronouns and topic stay "
-        "consistent; translate ONLY the last line."
-    )
+        "consistent; re-express ONLY the last line.",
+    ]
+    if target_code == "uz":
+        rules.insert(3, (
+            "Uzbek specifics: the verb goes at the END of the sentence — "
+            "never keep English or Russian word order. Avoid calques and "
+            "bureaucratic constructions; prefer the short, direct phrasing "
+            "an Uzbek colleague would actually use. Read numbers and dates "
+            "the Uzbek way."
+        ))
+    return " ".join(rules)
 
 
 def input_transcription_config(args: argparse.Namespace) -> types.AudioTranscriptionConfig:
@@ -542,13 +576,18 @@ class Translator:
         target = LANGUAGE_NAMES.get(self.args.target_language, self.args.target_language)
         history = "\n".join(f"{src} -> {dst}" for src, dst in self._recent_pairs)
         prompt = (f"Context (already translated):\n{history}\n\n" if history else "")
-        prompt += f"Translate this line:\n{sentence}"
+        prompt += f"Re-express this line:\n{sentence}"
         response = self._quality_client().models.generate_content(
             model=self._text_model,
             contents=prompt,
             config=types.GenerateContentConfig(
-                system_instruction=quality_instruction(source, target),
-                temperature=0.3,
+                system_instruction=quality_instruction(
+                    source, target, self.args.target_language
+                ),
+                # 0.3 -> 0.45: gapni qaytadan qurish uchun biroz erkinlik
+                # kerak. 0.3 da model manba tuzilishiga yopishib qolardi
+                # ("tarjimadek" eshitilishning sabablaridan biri).
+                temperature=0.45,
             ),
         )
         return (getattr(response, "text", "") or "").strip()
