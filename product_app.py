@@ -181,7 +181,7 @@ CHECKBOX_STYLE = (
     "border: 1px solid #33456080; background: #131e30; } "
     "QCheckBox::indicator:checked { background: #15845a; border-color: #15845a; }"
 )
-APP_VERSION = "0.9.79"
+APP_VERSION = "0.9.80"
 
 
 def _read_channel() -> str:
@@ -1332,12 +1332,7 @@ class TranslatorWindow(QWidget):
         self.hide()
         if not self.minimize_hint_shown:
             self.minimize_hint_shown = True
-            tray.showMessage(
-                APP_NAME,
-                t("Oyna yashirildi — menyu panelidagi belgidan qaytariladi."),
-                QSystemTrayIcon.MessageIcon.Information,
-                4000,
-            )
+            pass  # bildirishnoma olib tashlandi (foydalanuvchi talabi)
 
     def _open_logs_folder(self) -> None:
         """Log papkasini ochadi (Finder/Explorer)."""
@@ -2286,12 +2281,7 @@ class TranslatorWindow(QWidget):
                     3000,
                 )
         elif self.tray is not None:
-            self.tray.showMessage(
-                APP_NAME,
-                "Fizik karnay topilmadi — Windows ovoz sozlamalaridan qo‘lda tanlang.",
-                QSystemTrayIcon.MessageIcon.Warning,
-                4000,
-            )
+            pass  # bildirishnoma olib tashlandi (foydalanuvchi talabi)
 
     def _win_audio(self, action: str, name: str = "") -> str:
         """audio_config.ps1 ni chaqiradi (Windows default qurilma boshqaruvi)."""
@@ -2503,12 +2493,7 @@ class TranslatorWindow(QWidget):
         )
         print(f"[ZOOM] ogohlantirish ko'rsatildi: mikrofon={mic!r}", flush=True)
         if self.tray is not None:
-            self.tray.showMessage(
-                "Zoom mikrofonini tekshiring",
-                message,
-                QSystemTrayIcon.MessageIcon.Warning,
-                15000,
-            )
+            pass  # bildirishnoma olib tashlandi (foydalanuvchi talabi)
         self.route_hint.setText(f"⚠️ {message}")
         self.route_hint.setVisible(True)
 
@@ -4478,12 +4463,7 @@ class TranslatorWindow(QWidget):
             # panelida davom etadi. Butunlay chiqish: tray > Chiqish.
             event.ignore()
             self.hide()
-            tray.showMessage(
-                APP_NAME,
-                "Tarjima davom etmoqda — menyu panelidan boshqaring.",
-                QSystemTrayIcon.MessageIcon.Information,
-                4000,
-            )
+            pass  # bildirishnoma olib tashlandi (foydalanuvchi talabi)
             return
         self.heartbeat_timer.stop()
         if self.process:
@@ -4597,12 +4577,7 @@ def run_gui() -> int:
     if menu_bar_mode:
         window.hide()
         if window.tray is not None:
-            window.tray.showMessage(
-                APP_NAME,
-                t("Ishga tushdi — yuqoridagi belgidan boshqaring."),
-                QSystemTrayIcon.MessageIcon.Information,
-                3500,
-            )
+            pass  # bildirishnoma olib tashlandi (foydalanuvchi talabi)
     else:
         # Windows/Linux: oyna dastlab ko'rinadi, lekin macOS-uslub
         # ApplicationActivate filtri O'RNATILMAYDI. Windows'da tray

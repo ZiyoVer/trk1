@@ -701,3 +701,41 @@ o'z yo'lida qolaveradi; chiquvchi kanalda rejim umuman yoqilmaydi.
 **SABOQ:** tajribaviy zanjir ishlab turgan zanjirni O'ZINI ISBOTLAMASDAN
 almashtirmasligi kerak. To'g'ri tartib — avval sinov chaqiruvi, keyin
 almashtirish.
+
+## v0.9.80 — O'z-o'zidan chiqadigan bildirishnomalar olib tashlandi
+
+Foydalanuvchi: «bildirishnomalar, ogohlantirishlarni oddiy Windows 10/11
+versiyalaridan ham olib tashla».
+
+Olib tashlandi (foydalanuvchi hech narsa bosmagan holda o'z-o'zidan
+chiqadiganlari):
+
+- «Zoom mikrofonini tekshiring» — Start bosilganda chiqardi. Zoom
+  sozlamasi bir marta to'g'rilangach keraksiz.
+- «Tarjima davom etmoqda — menyu panelidan boshqaring» — oyna yopilganda.
+- «Ishga tushdi — yuqoridagi belgidan boshqaring» — dastur ochilganda.
+- «Oyna yashirildi — menyu panelidagi belgidan qaytariladi» —
+  kichraytirilganda.
+- «Fizik karnay topilmadi…» ogohlantirishi.
+
+QOLDIRILDI — faqat foydalanuvchi BOSGAN tugmaga javob beradiganlari
+(«Loglar saqlandi», «Sifatli tarjima keyingi ishga tushirishda»,
+«Rejimni almashtirish uchun avval to'xtating», «Ovoz endi: …»). Ularsiz
+bosilgan tugma hech narsa qilmagandek ko'rinardi.
+
+### Barqaror oqim ham yangilandi
+
+Shu versiyagacha hamkasblar 0.9.71 da qolib turgan edi (sinov ataylab
+ajratilgan edi). Foydalanuvchi «oddiy Windows versiyasida tabiiy tarjima
+yo'q-ku» deganidan keyin barqaror oqim ham 0.9.80 ga ko'chirildi — ya'ni
+boshliq va hamkasblar ham quyidagilarni oladi: sifatli tarjima rejimi,
+tabiiy tezlik, qotish tuzatilishi, tozalangan interfeys.
+
+### Antivirus haqida (savolga javob)
+
+Hamkasblarning kompyuterlarida tugmalar ishlamasligining logdan ko'ringan
+sababi antivirus emas edi: `j-zarmasov` da API kalit umuman kiritilmagan,
+`x-safarov` da qurilma tanlanmagan. Lekin haqiqiy tegishli xavf bor:
+**ilova imzolanmagan**, shuning uchun SmartScreen va antiviruslar shubha
+qiladi. To'liq yechim — kod imzolash sertifikati (yiliga ~$200–400).
+Ro'yxatga qo'shildi.
