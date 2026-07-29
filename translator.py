@@ -198,9 +198,46 @@ def quality_instruction(source: str, target: str, target_code: str = "") -> str:
             "never keep English or Russian word order. Avoid calques and "
             "bureaucratic constructions; prefer the short, direct phrasing "
             "an Uzbek colleague would actually use. Read numbers and dates "
-            "the Uzbek way."
+            "the Uzbek way. A good Uzbek version is usually SHORTER than a "
+            "literal one — if yours is longer, you are still translating "
+            "word by word."
         ))
+        rules.append(UZBEK_STYLE_EXAMPLES)
     return " ".join(rules)
+
+
+# MISOLLAR QOIDADAN KUCHLIROQ. Model mavhum ko'rsatmaga ("tabiiy yoz")
+# qaraganda aniq misolga ancha ishonchli ergashadi. Har juftlik bitta
+# haqiqiy nuqsonni ko'rsatadi: idoraviy qurilma, ortiqcha "fakt/holat",
+# ingliz tartibi, "ishonch hosil qilish" kabi kalka.
+UZBEK_STYLE_EXAMPLES = """
+Follow these examples of BAD (literal) vs GOOD (natural spoken Uzbek):
+
+EN: We need to make sure that the report is submitted before the end of the day.
+BAD: Biz hisobot kun oxirigacha topshirilganligiga ishonch hosil qilishimiz kerak.
+GOOD: Hisobotni bugun kech bo'lmasdan topshirishimiz kerak.
+
+EN: I would like to draw your attention to the fact that the budget has been reduced.
+BAD: Men sizning e'tiboringizni byudjet qisqartirilganligi faktiga qaratmoqchiman.
+GOOD: Byudjet qisqarganini aytib o'tmoqchiman.
+
+EN: There is a possibility that the client will cancel the meeting.
+BAD: Mijoz uchrashuvni bekor qilishi mumkinligi ehtimoli mavjud.
+GOOD: Mijoz uchrashuvni bekor qilishi mumkin.
+
+EN: Could you please provide us with an update on the current status of the project?
+BAD: Iltimos, bizga loyihaning joriy holati bo'yicha yangilanish taqdim eta olasizmi?
+GOOD: Loyiha qay ahvolda — aytib bera olasizmi?
+
+RU: В связи с тем, что сроки сжаты, предлагаю перенести обсуждение.
+BAD: Muddatlar siqilganligi bilan bog'liq holda, muhokamani ko'chirishni taklif qilaman.
+GOOD: Vaqt tig'iz, shuning uchun muhokamani keyinga qoldiraylik.
+
+Never produce the BAD style. Constructions like "ishonch hosil qilish",
+"e'tiboringizni qaratmoqchiman", "...ligi bilan bog'liq holda", "taqdim
+etish", "joriy holat", "amalga oshirish" are translation artefacts — real
+speakers do not talk like that in a meeting.
+"""
 
 
 def input_transcription_config(args: argparse.Namespace) -> types.AudioTranscriptionConfig:
@@ -783,26 +820,17 @@ class Translator:
             "odatdagi tarjimaga qaytdik."
         )
 
-    # === NAVBAT (turn-taking) va VAQTINCHA O'CHIRISH ===
+    # === VAQTINCHA O'CHIRISH («Meeting o'zbekcha») ===
+    #
+    # NAVBAT KO'RSATKICHI OLIB TASHLANDI (0.9.78). Sabab: `has_audio()`
+    # 0.15 s oynaga qaraydi, kuzatuvchi esa har 0.2 s da so'rardi — ijro
+    # paytida holat sekundiga ~5 marta sakrab, oynani setStyleSheet va tray
+    # tooltip chaqiruvlari bilan ko'mib tashlardi. Uzoq meetingda oyna
+    # qotib, «To'xtatish» bosilmay qolardi (jonli nosozlik).
     # Foydalanuvchi shikoyati: "men gapiryapman, u gapiryapti, latency
     # yomon — orada ikkalamiz ham gapdan to'xtayapmiz". Sabab: gapirib
     # bo'lgach tarjima YETIB BORGANINI bilish imkoni yo'q edi. Dvigatel
     # buni biladi (ijro tugadimi), lekin oynaga aytmasdi. Endi aytadi.
-    STATE_POLL_SECONDS = 0.2
-
-    async def _watch_state(self) -> None:
-        """Ijro holatini oynaga bildiradi (faqat O'ZGARGANDA yoziladi)."""
-        state = ""
-        while not self.stop_event.is_set():
-            current = "delivering" if self.player.has_audio() else "idle"
-            if current != state:
-                state = current
-                self._log(f"[STATE] {current}")
-            with suppress(TimeoutError, asyncio.TimeoutError):
-                await asyncio.wait_for(
-                    self.stop_event.wait(), timeout=self.STATE_POLL_SECONDS
-                )
-
     async def _watch_pause_command(self) -> None:
         """Oyna «Meeting o'zbekcha» ni yoqsa kiruvchi kanalni to'xtatadi.
 
@@ -815,10 +843,10 @@ class Translator:
             if paused != self.pause_event.is_set():
                 if paused:
                     self.pause_event.set()
-                    self._log("[STATE] paused")
+                    self._log("[REJIM] kiruvchi kanal to'xtatildi")
                 else:
                     self.pause_event.clear()
-                    self._log("[STATE] resumed")
+                    self._log("[REJIM] kiruvchi kanal qayta yoqildi")
             with suppress(TimeoutError, asyncio.TimeoutError):
                 await asyncio.wait_for(self.stop_event.wait(), timeout=0.5)
 
@@ -881,7 +909,6 @@ class Translator:
         self.started_at = time.monotonic()
         self._api_key = api_key
         device_watcher = asyncio.create_task(self._watch_output_device())
-        state_watcher = asyncio.create_task(self._watch_state())
         quality_tasks = (
             [
                 asyncio.create_task(self._watch_sentences()),
@@ -928,7 +955,7 @@ class Translator:
                         pass
                     delay = min(delay * 2, 15.0)
         finally:
-            for task in (device_watcher, state_watcher, pause_watcher, *quality_tasks):
+            for task in (device_watcher, pause_watcher, *quality_tasks):
                 if task is None:
                     continue
                 task.cancel()

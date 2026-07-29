@@ -594,3 +594,59 @@ Tekshirildi: `setVisible(True)` dan keyin `isWindow()=False`,
 SABOQ: widget'ni layoutdan olib tashlaganda uni ko'rsatadigan chaqiruvlar
 qolsa, u yo'qolmaydi — mustaqil oynaga aylanadi. To'g'ri yo'l — yashirin
 otaga bog'lash.
+
+## v0.9.78 — Oyna qotishi tuzatildi + tabiiylik kuchaytirildi
+
+### 1. QOTISH — ildiz sabab navbat ko'rsatkichida edi (mening qo'shganim)
+
+Foydalanuvchi: «ko'p tarjimadan keyin dastur oynasi qotyapti, To'xtatish
+tugmasi ishlamayapti».
+
+Ildiz sabab — vaqt oynalari mos kelmagan:
+
+| | Qiymat |
+| --- | --- |
+| `AudioPlayer.has_audio()` qaraydigan oyna | **0.15 s** |
+| `_watch_state` so'rov oralig'i | **0.2 s** |
+
+So'rov oralig'i oynadan KATTA. Shuning uchun ijro davomida holat deyarli
+har so'rovda `delivering ↔ idle` deb sakrardi — sekundiga ~5 marta. Har
+o'zgarishda oyna `setStyleSheet()` (Qt uslubni qaytadan tahlil qilib,
+widget'ni re-polish qiladi) va `tray.setToolTip()` (Windows shell
+chaqiruvi) bajarardi. Uzoq meetingda minglab chaqiruv — GUI oqimi
+tiqilib, «To'xtatish» ham bosilmay qolardi.
+
+Yechim: **navbat ko'rsatkichi butunlay olib tashlandi** (foydalanuvchi ham
+shuni so'radi). Dvigateldagi `_watch_state` ham o'chirildi — endi bunday
+satrlar umuman yozilmaydi. Pauza xabarlari `[REJIM]` prefiksi bilan
+qoladi (ular kamdan-kam va faqat logga).
+
+SABOQ: davriy so'rov oralig'i kuzatilayotgan hodisaning oynasidan KICHIK
+bo'lishi shart, aks holda holat sun'iy ravishda sakraydi. Bu yerda esa
+har sakrash GUI'da qimmat ish qo'zg'atardi.
+
+### 2. Tabiiylik: qoida emas, MISOL
+
+Foydalanuvchi: «gemini o'sha gapni original gapga yopishib olmasdan,
+o'zbekcha tarjimasini tabiiy qilib qaytadan yasashi kerak».
+
+0.9.76 da usul aytilgan edi (ma'noni tushun → qayta qur). Endi ustiga
+**misollar** qo'shildi — model mavhum ko'rsatmadan ko'ra aniq misolga
+ancha ishonchli ergashadi. Beshta BAD/GOOD juftligi, har biri bitta
+haqiqiy nuqsonni ko'rsatadi:
+
+- «Biz hisobot … topshirilganligiga ishonch hosil qilishimiz kerak»
+  → «Hisobotni bugun kech bo'lmasdan topshirishimiz kerak»
+- «e'tiboringizni … faktiga qaratmoqchiman» → «aytib o'tmoqchiman»
+- «… mumkinligi ehtimoli mavjud» → «… mumkin»
+- «joriy holati bo'yicha yangilanish taqdim eta olasizmi» → «qay ahvolda —
+  aytib bera olasizmi»
+- «… bilan bog'liq holda … taklif qilaman» → «Vaqt tig'iz, shuning uchun …»
+
+Qo'shimcha: kalka qurilmalar nomma-nom taqiqlandi («ishonch hosil qilish»,
+«taqdim etish», «joriy holat», «amalga oshirish» va h.k.) va aniq mezon
+berildi — **yaxshi o'zbekcha odatda so'zma-so'zidan QISQAROQ**; uzunroq
+chiqsa, demak hali so'zma-so'z tarjima qilinyapti.
+
+Misollar FAQAT target=uz bo'lganda qo'shiladi (ruscha ko'rsatma 1134
+belgi, o'zbekcha 2908).

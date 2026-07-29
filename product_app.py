@@ -181,7 +181,7 @@ CHECKBOX_STYLE = (
     "border: 1px solid #33456080; background: #131e30; } "
     "QCheckBox::indicator:checked { background: #15845a; border-color: #15845a; }"
 )
-APP_VERSION = "0.9.77"
+APP_VERSION = "0.9.78"
 
 
 def _read_channel() -> str:
@@ -591,9 +591,6 @@ class TranslatorWindow(QWidget):
         self.quality_mode = (
             str(self.settings.value("translation/quality", "false")).lower() == "true"
         )
-        # Navbat ko'rsatkichi holati (dvigatelning [STATE] satrlaridan).
-        self.turn_states: dict[str, str] = {}
-        self._last_turn_active = ""
         self.mode_pairs = {
             mode.code: normalize_pair(
                 mode.code,
@@ -854,18 +851,6 @@ class TranslatorWindow(QWidget):
         self.quality_check.toggled.connect(self._toggle_quality)
         layout.addWidget(self.quality_check)
 
-        # NAVBAT KO'RSATKICHI. Foydalanuvchi shikoyati: "men gapiryapman, u
-        # gapiryapti … orada ikkalamiz ham gapdan to'xtayapmiz". Sabab —
-        # gapirib bo'lgach tarjima yetib borganini bilish imkoni yo'q edi.
-        # Dvigatel buni biladi ([STATE] satrlari), endi ekranda ko'rinadi.
-        self.turn_label = QLabel("")
-        self.turn_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.turn_label.setStyleSheet(
-            "color: #cbd5e1; font-size: 12px; font-weight: 600; "
-            "background: #131e30; border-radius: 8px; padding: 6px;"
-        )
-        self.turn_label.setVisible(False)
-        layout.addWidget(self.turn_label)
 
         # === Eski til-widgetlari: YASHIRIN. Mavjud ichki logika (mode_pairs,
         # ishga tushirish) shular orqali ishlaydi; foydalanuvchi esa
@@ -1495,7 +1480,6 @@ class TranslatorWindow(QWidget):
             # uzilmaydi. Oynadagi panellarni ham qayta chizmaymiz —
             # meeting o'rtasida interfeys sakrab ketmasin.
             self._apply_meeting_uz_live(enabled)
-            self.turn_states["INCOMING"] = "idle"
             self.route_hint.setText(
                 "🔊 Meeting o‘zbekcha: hammani jonli eshityapsiz. Gapingiz "
                 "tarjimasi avvalgidek ketmoqda."
@@ -3296,8 +3280,6 @@ class TranslatorWindow(QWidget):
         # faqat ochilgan kanalni to'xtata oladi — yo'q kanalni yo'ldan
         # qo'shib bo'lmaydi (u holda Stop→Start kerak).
         self.engine_has_incoming = mode == "duplex"
-        self.turn_states = {}
-        self._last_turn_active = ""
         # Har ishga tushirishda eski buyruqlar tozalanadi (aks holda o'tgan
         # sessiyadagi `incoming_paused` yangi sessiyani darhol to'xtatardi).
         self.device_state_path.unlink(missing_ok=True)
@@ -3758,47 +3740,6 @@ class TranslatorWindow(QWidget):
             return
         self.process.readAllStandardOutput()
 
-    def _update_turn_state(self, channel: str, state: str) -> None:
-        """Dvigatel yuborgan holatni NAVBAT ko'rsatkichiga aylantiradi.
-
-        Nima uchun kerak: tarjima kechikkani uchun ikki tomon bir-birini
-        kutib, keyin bir vaqtda gapirib yuborardi. Endi qachon gapirish
-        mumkinligi ekranda (va tray'da) turadi."""
-        if state in {"paused", "resumed"}:
-            print(f"[UI] kiruvchi kanal: {state}", flush=True)
-            return
-        self.turn_states[channel or "OUTGOING"] = state
-        outgoing = self.turn_states.get("OUTGOING", "idle")
-        incoming = self.turn_states.get("INCOMING", "idle")
-        if outgoing == "delivering":
-            # «Tarjimangiz yetkazilmoqda…» yozuvi foydalanuvchi talabiga
-            # ko'ra OLIB TASHLANDI — gapirayotganda ekranda o'zgarib turgan
-            # yozuv keraksiz edi. Holat ichkarida saqlanadi: shu tugagach
-            # «Yetkazildi» ko'rsatiladi.
-            self._last_turn_active = "OUTGOING"
-            self.turn_label.setVisible(False)
-            if self.tray is not None:
-                self.tray.setToolTip(APP_NAME)
-            return
-        if incoming == "delivering":
-            text, colour = "Suhbatdosh gapirmoqda — kuting", "#93c5fd"
-        elif self._last_turn_active == "OUTGOING":
-            text, colour = "Yetkazildi — javobni kuting", "#86efac"
-        else:
-            text, colour = "Gapirishingiz mumkin", "#94a3b8"
-        if incoming == "delivering":
-            self._last_turn_active = "INCOMING"
-        self.turn_label.setText(text)
-        self.turn_label.setStyleSheet(
-            f"color: {colour}; font-size: 12px; font-weight: 600; "
-            "background: #131e30; border-radius: 8px; padding: 6px;"
-        )
-        self.turn_label.setVisible(True)
-        # Oyna kichraytirilgan bo'lsa foydalanuvchi tray'dan boshqaradi —
-        # holat o'sha yerda ham ko'rinsin.
-        if self.tray is not None:
-            self.tray.setToolTip(f"{APP_NAME} — {text}")
-
     def _read_engine_log(self) -> None:
         try:
             size = self.engine_log_path.stat().st_size
@@ -3830,9 +3771,6 @@ class TranslatorWindow(QWidget):
             if candidate in {"INCOMING", "OUTGOING"}:
                 channel = candidate
                 line = remainder
-        if line.startswith("[STATE] "):
-            self._update_turn_state(channel, line.removeprefix("[STATE] ").strip())
-            return
         if line.startswith("Xato:"):
             self.last_engine_error = line.removeprefix("Xato:").strip()
             return
@@ -3957,13 +3895,6 @@ class TranslatorWindow(QWidget):
         self.heartbeat_timer.stop()
         self.heartbeat_in_progress = False
         self._read_engine_log()
-        # Navbat ko'rsatkichi tarjima tugagach qotib qolmasin.
-        self.turn_states = {}
-        self._last_turn_active = ""
-        if getattr(self, "turn_label", None) is not None:
-            self.turn_label.setVisible(False)
-        if self.tray is not None:
-            self.tray.setToolTip(APP_NAME)
         process = self.process
         if process:
             process.readAllStandardOutput()
