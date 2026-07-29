@@ -4,6 +4,7 @@ import unittest
 
 import translator
 
+from playback_profiles import PLAYBACK_PROFILES
 from translator import (
     DEFAULT_VOICE,
     MODEL,
@@ -23,10 +24,18 @@ class TranslatorConfigTests(unittest.TestCase):
             self.assertEqual(args.voice, DEFAULT_VOICE)
             self.assertEqual(args.voice, "Charon")
 
-    def test_quality_playback_uses_slightly_faster_natural_speed(self) -> None:
+    def test_playback_speed_is_natural_and_catches_up_only_when_behind(self) -> None:
+        """Doimiy tezlatish OLIB TASHLANDI (1.08 -> 1.0).
+
+        Sabab: har bir tarjima doim tezlatilib, shoshqaloq va sun'iy
+        eshitilardi. Orqada qolganda tezlatish ijro qatlamida allaqachon
+        bor — shuning uchun doimiy tezlatishga hojat yo'q."""
         args = build_parser().parse_args([])
-        self.assertEqual(args.speech_speed, 1.08)
+        self.assertEqual(args.speech_speed, 1.0)
         self.assertEqual(args.playback_profile, "balanced-smooth")
+        profile = PLAYBACK_PROFILES["balanced-smooth"]
+        # Orqada qolganda tezlashtirish qoladi (bu o'zgarmadi).
+        self.assertGreater(profile.catchup_speed, 1.0)
 
     def test_company_provider_is_google_gemini(self) -> None:
         self.assertEqual(PROVIDER, "google")

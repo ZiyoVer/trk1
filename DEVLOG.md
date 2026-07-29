@@ -473,3 +473,70 @@ tarjimaga QAYTADI — foydalanuvchi jimlikda qolmaydi. Sinovda tasdiqlandi.
 Interfeys o'zgarishlari QT offscreen render bilan **rasmga olib
 ko'rilgan** va bosqichma-bosqich tuzatilgan (matnlar bir-birining ustiga
 tushib qolgani ham shunda topildi).
+
+## v0.9.75 — Boshqa loyihadan olingan beshta saboq
+
+Foydalanuvchi UzLive (YouTube dublyaj, Navoiy/CosyVoice TTS) loyihasining
+o'zgarishlar tarixini berdi. Ular boshqa yo'ldan borib BIZ duch kelgan
+muammolarning ko'piga yechim topgan. Beshtasi ko'chirildi.
+
+**MIKROFON/QURILMA QATLAMIGA TEGILMADI** (foydalanuvchi sharti). Isbot —
+`git diff --stat`: faqat `translator.py` va test fayli o'zgardi;
+`audio_config.ps1`, `winaec.py`, `audio_routing.py` va `product_app.py`
+dagi 29 ta routing chaqiruvi — bittasi ham qo'zg'atilmadi.
+
+### 1. Konveyer (eng katta yutuq)
+
+Ilgari bitta oqim: tarjima → ovoz → ijro → keyin endi keyingi gap. Ya'ni
+1-gap YANGRAYOTGANDA 2-gap ustida ish ketmasdi. Endi ikki bosqich —
+`_translate_worker` va `_speak_worker` — navbat orqali ulangan. Tartib
+buzilmaydi (tarjima oqimi bitta, navbat FIFO).
+
+O'lchov (taqlidiy 0.4 s tarjima + 0.6 s ovoz, 3 gap):
+
+| | Vaqt |
+| --- | --- |
+| Ketma-ket (eski) | 3.0 s |
+| Konveyer (yangi) | **2.2 s** |
+
+Gaplar orasi 1.0 s dan 0.6 s ga tushdi — ya'ni suhbat ravonroq.
+
+### 2. Doimiy tezlatish olib tashlandi (1.08 → 1.0)
+
+Ularda ataylab qaytarilgan: «oddiy nutq yana 1.0 da». Bizda har bir tarjima
+DOIM 1.08 tezlikda cho'zilardi — shoshqaloq va sun'iy eshitilardi.
+
+Muhimi: **kod o'zgarmadi, bitta raqam o'zgardi.** «Orqada qolsa tezlatish»
+mantig'i `AudioPlayer._speed_for_backlog` da allaqachon bor:
+`backlog < 850 ms → 1.0`, `> 2600 ms → 1.10`, oraliqda `normal_speed`.
+Faqat `normal_speed` (ya'ni `--speech-speed`) 1.08 turgan edi.
+
+### 3. Qo'shni takror gaplar tashlanadi
+
+Ularda takror gap tarjima va TTS'dan OLDIN o'chiriladi. Bizda ham shu
+nosozlik bo'lgan («brother brother brother»). Endi tinish belgisi va
+katta-kichik harf hisobga olinmagan holda AYNAN bir xil qo'shni gap
+tashlanadi. Oddiy so'z takrorlariga va ma'noli matnga tegilmaydi.
+
+### 4. Duration guard
+
+Ovoz uzunligi matnga nisbatan g'ayritabiiy (>2.2x yoki <0.4x) bo'lsa BIR
+marta qayta yaratiladi va kutilganiga yaqinrog'i olinadi. Normal uzunlik
+birinchi urinishdayoq qabul qilinadi — qo'shimcha kechikish yo'q. Bu
+generativ modelning «srыv» (o'zidan gap to'qib yuborishi) holatidan
+himoya: bunday narsa meetingga ketmaydi.
+
+### 5. Uzun gap faqat tinish belgisidan bo'linadi
+
+Bitta so'rov 28 so'z / 190 belgi bilan cheklandi (ularning real
+xatolardan chiqqan raqami). Chegaradan oshsa gap nuqta/savol/undov, keyin
+vergul-nuqtali vergul bo'yicha bo'linadi — o'rtasidan KESILMAYDI.
+Qismlar orasiga 80 ms pauza qo'yiladi, sun'iy ulanish eshitilmasin.
+
+### Olinmagani
+
+- **Kesh va bo'lakni oldindan tayyorlash** — ularda video, 2 daqiqa
+  oldinga yugurish mumkin. Jonli suhbatda imkonsiz.
+- **Asl ovozni 3% da ostida qoldirish** — ularda mikrofon yo'q. Bizda o'sha
+  past ovoz mikrofonga tushib, boshqalarning gapi qayta tarjima bo'lardi
+  (2026-07-28 Zoom nosozligining aynan o'zi).

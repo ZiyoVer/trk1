@@ -7,6 +7,7 @@ import asyncio
 import json
 import os
 import platform
+import re
 import signal
 import sys
 import tempfile
@@ -418,6 +419,9 @@ class Translator:
         self.quality_mode = bool(getattr(args, "quality", False))
         self.sentence_buffer = SentenceBuffer()
         self._sentence_queue: asyncio.Queue[str] = asyncio.Queue()
+        # Konveyerning ikkinchi bosqichi: tarjima tayyor, ovoz kutilmoqda.
+        self._speech_queue: asyncio.Queue[str] = asyncio.Queue()
+        self._last_sentence_norm = ""
         self._recent_pairs: deque[tuple[str, str]] = deque(maxlen=3)
         self._quality_failed = False
         self._quality_client_cache = None
@@ -582,12 +586,66 @@ class Translator:
             with suppress(TimeoutError, asyncio.TimeoutError):
                 await asyncio.wait_for(self.stop_event.wait(), timeout=0.2)
 
-    async def _quality_worker(self) -> None:
-        """Gaplarni BIRMA-BIR tarjima qilib ijro etadi (tartib buzilmasin).
+    # Bitta so'rovga qat'iy chegara. Uzun matnda generativ modellar "srыv"
+    # beradi — o'zidan gap to'qib, takrorlab ketadi. Chegaradan oshgan gap
+    # FAQAT tinish belgisi joyidan bo'linadi (o'rtasidan kesilmaydi).
+    MAX_REQUEST_WORDS = 28
+    MAX_REQUEST_CHARS = 190
+    # Bo'lingan qismlar orasidagi qisqa pauza — sun'iy ulanish eshitilmasin.
+    PART_GAP_SECONDS = 0.08
+    # Ovoz uzunligi tekshiruvi (duration guard): matnga nisbatan
+    # g'ayritabiiy uzun/qisqa natija — model srыvining belgisi.
+    WORDS_PER_SECOND = 2.6
+    DURATION_MAX_RATIO = 2.2
+    DURATION_MIN_RATIO = 0.4
 
-        XATOGA CHIDAMLI: biror bosqich yiqilsa rejim o'chadi va dvigatel
-        odatdagi (sinxron) tarjimaga qaytadi — foydalanuvchi jimlikda
-        qolmaydi."""
+    @classmethod
+    def _split_for_request(cls, sentence: str) -> list[str]:
+        """Uzun gapni tinish belgilari bo'yicha bo'ladi."""
+        if (
+            len(sentence) <= cls.MAX_REQUEST_CHARS
+            and len(sentence.split()) <= cls.MAX_REQUEST_WORDS
+        ):
+            return [sentence]
+        parts: list[str] = []
+        current = ""
+        # Avval nuqta/savol/undov, keyin vergul-nuqtali vergul bo'yicha.
+        pieces = re.split(r"(?<=[.!?…])\s+", sentence)
+        refined: list[str] = []
+        for piece in pieces:
+            if len(piece) <= cls.MAX_REQUEST_CHARS:
+                refined.append(piece)
+            else:
+                refined.extend(p.strip() for p in re.split(r"(?<=[,;:])\s+", piece) if p.strip())
+        for piece in refined:
+            candidate = f"{current} {piece}".strip()
+            if current and (
+                len(candidate) > cls.MAX_REQUEST_CHARS
+                or len(candidate.split()) > cls.MAX_REQUEST_WORDS
+            ):
+                parts.append(current)
+                current = piece
+            else:
+                current = candidate
+        if current:
+            parts.append(current)
+        return parts or [sentence]
+
+    @staticmethod
+    def _normalised(text: str) -> str:
+        return re.sub(r"[^\w\s]", "", text.casefold()).strip()
+
+    def _silence(self, seconds: float) -> bytes:
+        return b"\x00" * (int(24_000 * seconds) * 2)
+
+    async def _translate_worker(self) -> None:
+        """KONVEYER 1-bosqich: gapni tarjima qiladi va navbatga qo'yadi.
+
+        Nima uchun ikkita bosqich: ilgari bitta oqim tarjima → ovoz → ijro
+        ni ketma-ket bajarardi, ya'ni 1-gap YANGRAYOTGANDA 2-gap ustida
+        umuman ish ketmasdi. Endi ovoz tayyorlanayotgan paytda keyingi gap
+        tarjima qilinadi — kechikish sezilarli qisqaradi. Tartib buzilmaydi:
+        tarjima oqimi bitta va navbat FIFO."""
         while not self.stop_event.is_set():
             try:
                 sentence = await asyncio.wait_for(self._sentence_queue.get(), timeout=0.5)
@@ -595,35 +653,96 @@ class Translator:
                 continue
             if self._quality_failed:
                 continue
+            # QO'SHNI TAKROR: Whisper/Live transkripti ba'zan oxirgi gapni
+            # aynan qaytaradi ("brother brother brother" nosozligi). Aynan
+            # bir xil qo'shni gap tarjima ham, ovoz ham qilinmaydi. Oddiy
+            # so'z takrorlariga va ma'noli matnga TEGILMAYDI.
+            normalised = self._normalised(sentence)
+            if normalised and normalised == self._last_sentence_norm:
+                self._log("[SIFAT] qo'shni takror gap tashlandi")
+                continue
+            self._last_sentence_norm = normalised
             try:
-                if not self._text_model or not self._tts_model:
-                    self._text_model, self._tts_model = await asyncio.to_thread(
-                        self._pick_models
-                    )
-                    self._log(
-                        f"[SIFAT] matn modeli: {self._text_model!r} | "
-                        f"ovoz modeli: {self._tts_model!r}"
-                    )
-                    if not self._text_model or not self._tts_model:
-                        raise RuntimeError("mos model topilmadi")
+                await self._ensure_models()
+                for part in self._split_for_request(sentence):
+                    translated = await asyncio.to_thread(self._quality_translate, part)
+                    if not translated:
+                        continue
+                    self._recent_pairs.append((part, translated))
+                    self._log(f"{self.args.target_language.upper()} ›› {translated}")
+                    await self._speech_queue.put(translated)
+            except Exception as error:
+                self._fail_quality(error)
+
+    async def _speak_worker(self) -> None:
+        """KONVEYER 2-bosqich: tarjimani ovozga aylantirib ijro etadi."""
+        while not self.stop_event.is_set():
+            try:
+                text = await asyncio.wait_for(self._speech_queue.get(), timeout=0.5)
+            except (TimeoutError, asyncio.TimeoutError):
+                continue
+            if self._quality_failed:
+                continue
+            try:
                 started = time.monotonic()
-                translated = await asyncio.to_thread(self._quality_translate, sentence)
-                if not translated:
-                    continue
-                self._recent_pairs.append((sentence, translated))
-                self._log(f"{self.args.target_language.upper()} ›› {translated}")
-                pcm = await asyncio.to_thread(self._quality_speak, translated)
+                pcm = await self._speak_checked(text)
                 if not pcm:
                     raise RuntimeError("ovoz qaytmadi")
-                self.player.play(pcm)
+                self.player.play(pcm + self._silence(self.PART_GAP_SECONDS))
                 self.player.flush(force_start=True)
-                self._log(f"[SIFAT] {time.monotonic() - started:.1f}s")
+                self._log(f"[SIFAT] ovoz {time.monotonic() - started:.1f}s")
             except Exception as error:
-                self._quality_failed = True
-                self._log(
-                    f"[SIFAT] ishlamadi ({type(error).__name__}: {error}) — "
-                    "odatdagi tarjimaga qaytdik."
-                )
+                self._fail_quality(error)
+
+    async def _speak_checked(self, text: str) -> bytes:
+        """Ovoz + UZUNLIK TEKSHIRUVI (duration guard).
+
+        Generativ model ba'zan matnga aloqasi yo'q uzun narsa "to'qib"
+        yuboradi. Natija kutilgan uzunlikdan keskin farq qilsa BIR marta
+        qayta yaratamiz va kutilganiga yaqinrog'ini olamiz. Normal uzunlik
+        birinchi urinishdayoq qabul qilinadi — qo'shimcha kechikish yo'q."""
+        words = max(1, len(text.split()))
+        expected = words / self.WORDS_PER_SECOND
+        first = await asyncio.to_thread(self._quality_speak, text)
+        if not first:
+            return first
+        first_seconds = len(first) / (24_000 * 2)
+        if self.DURATION_MIN_RATIO * expected <= first_seconds <= self.DURATION_MAX_RATIO * expected:
+            return first
+        self._log(
+            f"[SIFAT] uzunlik shubhali ({first_seconds:.1f}s, kutilgan "
+            f"~{expected:.1f}s) — qayta yaratilmoqda"
+        )
+        second = await asyncio.to_thread(self._quality_speak, text)
+        if not second:
+            return first
+        second_seconds = len(second) / (24_000 * 2)
+        return (
+            second
+            if abs(second_seconds - expected) < abs(first_seconds - expected)
+            else first
+        )
+
+    async def _ensure_models(self) -> None:
+        if self._text_model and self._tts_model:
+            return
+        self._text_model, self._tts_model = await asyncio.to_thread(self._pick_models)
+        self._log(
+            f"[SIFAT] matn modeli: {self._text_model!r} | "
+            f"ovoz modeli: {self._tts_model!r}"
+        )
+        if not self._text_model or not self._tts_model:
+            raise RuntimeError("mos model topilmadi")
+
+    def _fail_quality(self, error: Exception) -> None:
+        """Rejimni o'chirib, odatdagi sinxron tarjimaga qaytaramiz."""
+        if self._quality_failed:
+            return
+        self._quality_failed = True
+        self._log(
+            f"[SIFAT] ishlamadi ({type(error).__name__}: {error}) — "
+            "odatdagi tarjimaga qaytdik."
+        )
 
     # === NAVBAT (turn-taking) va VAQTINCHA O'CHIRISH ===
     # Foydalanuvchi shikoyati: "men gapiryapman, u gapiryapti, latency
@@ -727,7 +846,8 @@ class Translator:
         quality_tasks = (
             [
                 asyncio.create_task(self._watch_sentences()),
-                asyncio.create_task(self._quality_worker()),
+                asyncio.create_task(self._translate_worker()),
+                asyncio.create_task(self._speak_worker()),
             ]
             if self.quality_mode
             else []
@@ -1217,7 +1337,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--speech-speed",
         type=float,
-        default=1.08,
+        # 1.08 -> 1.0: doimiy tezlatish tarjimani shoshqaloq va sun'iy
+        # qilardi. Orqada qolganda tezlatish ijro qatlamida allaqachon bor
+        # (backlog high_water dan oshsa catchup 1.10), shuning uchun oddiy
+        # holatda tabiiy tezlik qoladi.
+        default=1.0,
         help="Translated speech playback speed without pitch shift (1.0-1.25)",
     )
     parser.add_argument(
