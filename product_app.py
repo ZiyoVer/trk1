@@ -181,7 +181,7 @@ CHECKBOX_STYLE = (
     "border: 1px solid #33456080; background: #131e30; } "
     "QCheckBox::indicator:checked { background: #15845a; border-color: #15845a; }"
 )
-APP_VERSION = "0.9.80"
+APP_VERSION = "0.9.81"
 
 
 def _read_channel() -> str:
@@ -560,6 +560,16 @@ class TranslatorWindow(QWidget):
         self.preferred_output_name = str(
             self.settings.value("preferred_output", "") or ""
         )
+        # Ilgari saqlangan SOXTA tanlov (yo'naltirgich) bekor qilinadi —
+        # aks holda yangilanishdan keyin ham o'sha nosozlik qolaverardi.
+        if self.preferred_output_name and is_alias_output(self.preferred_output_name):
+            print(
+                f"[ROUTING] soxta chiqish tanlovi bekor qilindi: "
+                f"{self.preferred_output_name!r}",
+                flush=True,
+            )
+            self.preferred_output_name = ""
+            self.settings.remove("preferred_output")
         # Interfeys tili: saqlangan tanlov yoki OT tili (uz/ru/en).
         ui_i18n.set_language(
             ui_i18n.initial_language(
@@ -2309,7 +2319,12 @@ class TranslatorWindow(QWidget):
             # (P2961)" — buzardi -> dvigatel qurilmani topolmasdi).
             result = subprocess.run(
                 args, capture_output=True, encoding="utf-8", errors="replace",
-                timeout=30, creationflags=creationflags,
+                # 30 -> 90 s. Jonli nosozlik (2026-07-29, uy kompyuteri):
+                # `startduplex` 30 soniyada uzilib, yo'naltirish UMUMAN
+                # qo'llanmagan. Sekin kompyuterda yoki antivirus PowerShell'ni
+                # tekshirayotganda C# kompilyatsiya uzoq ketadi. Bu chaqiruv
+                # FON oqimida — kutish GUI'ni qotirmaydi.
+                timeout=90, creationflags=creationflags,
             )
             out = (result.stdout or "").strip()
             err = (result.stderr or "").strip()
@@ -4106,6 +4121,16 @@ class TranslatorWindow(QWidget):
                 device
                 for device in available_devices("output")
                 if not is_virtual_device(device.name)
+                # SOXTA QURILMALAR ("Переназначение звуковых устр. - Output",
+                # "Sound Mapper", "Первичный звуковой драйвер") ro'yxatdan
+                # CHIQARILADI. Jonli nosozlik (2026-07-29, uy kompyuteri):
+                # foydalanuvchi shuni tanlagan edi -> aks-sado bekor qilish
+                # qurilmani topolmay o'ldi (karnay=-1) va dastur "Ctrl bosib
+                # gapiring" rejimiga tushdi, ya'ni gapirish ishlamay qoldi;
+                # tarjima ovozi esa yo'naltirgich orqali TIZIM chiqishiga
+                # ketdi — u esa o'sha payt virtual kabelga o'zgartirilgan
+                # bo'ladi, demak eshitilmaydi.
+                and not is_alias_output(device.name)
             ]
         except Exception:
             return

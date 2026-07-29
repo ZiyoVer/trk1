@@ -739,3 +739,52 @@ sababi antivirus emas edi: `j-zarmasov` da API kalit umuman kiritilmagan,
 **ilova imzolanmagan**, shuning uchun SmartScreen va antiviruslar shubha
 qiladi. To'liq yechim — kod imzolash sertifikati (yiliga ~$200–400).
 Ro'yxatga qo'shildi.
+
+## v0.9.81 — Soxta chiqish qurilmasi «gapirish» ni o'ldirardi
+
+Foydalanuvchi: «Windows versiya endi gapirmay qoydi, tarjima qilyapti
+lekin eshitilmay qoydi». Uy kompyuteri (`user`, Windows 10, 0.9.80).
+
+### Ildiz sabab (logdan)
+
+```
+[ROUTING] dialogdan tanlandi: 'Переназначение звуковых устр. - Output'
+[AEC] [winaec-worker] karnay=-1 (...) qurilma topilmadi
+[AEC] ishlamadi (worker oqimi uzildi) — xavfsiz rejim: Ctrl bosib gapiring
+```
+
+«Переназначение звуковых устройств - Output» — **haqiqiy qurilma emas**,
+Windows MME yo'naltirgichi (Sound Mapper). Foydalanuvchi uni «ESHITAMAN»
+ro'yxatidan tanlagan, chunki ro'yxat uni **chiqarib tashlamagan** edi.
+
+Zanjir:
+1. Aks-sado bekor qilish (AEC) orientir sifatida o'sha soxta qurilmani
+   oldi → `karnay=-1` → worker o'ldi → dvigatel **«Ctrl bosib gapiring»**
+   zaxira rejimiga tushdi. Foydalanuvchi Ctrl bosmagani uchun gapi umuman
+   chiqmadi — «gapirmay qoydi» aynan shu.
+2. Tarjima ovozi ham o'sha yo'naltirgichga ketdi; u esa TIZIM chiqishiga
+   qarab ishlaydi, tizim chiqishi o'sha payt virtual kabelga
+   o'zgartiriladi → ovoz kabelga tushib, eshitilmadi.
+
+Ajablanarlisi: `is_alias_output()` funksiyasi va uning ro'yxati
+(`переназначение звуков`, `sound mapper`, `первичный звуковой драйвер`)
+**allaqachon bor edi**, lekin faqat bitta macOS yo'lida ishlatilardi —
+chiqish tanlash ro'yxatida emas.
+
+### Tuzatish
+
+- Soxta qurilmalar «ESHITAMAN» ro'yxatidan **chiqarildi**.
+- Ilgari saqlangan soxta tanlov **bekor qilinadi** (aks holda
+  yangilanishdan keyin ham nosozlik qolaverardi).
+
+### Ikkinchi muammo: PowerShell 30 soniyada uzildi
+
+```
+[ROUTING] startduplex ... timed out after 30 seconds
+```
+
+Yo'naltirish o'sha mashinada UMUMAN qo'llanmagan. Sekin kompyuterda yoki
+antivirus PowerShell'ni tekshirayotganda C# kompilyatsiya uzoq ketadi.
+Kutish vaqti **30 → 90 soniya**. Chaqiruv fon oqimida — GUI qotmaydi.
+(Foydalanuvchining «antiviruslar bloklayotgandir» degan taxmini shu
+nuqtada haqiqatga eng yaqin.)
