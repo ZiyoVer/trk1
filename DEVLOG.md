@@ -650,3 +650,54 @@ chiqsa, demak hali so'zma-so'z tarjima qilinyapti.
 
 Misollar FAQAT target=uz bo'lganda qo'shiladi (ruscha ko'rsatma 1134
 belgi, o'zbekcha 2908).
+
+## v0.9.79 — JONLI NOSOZLIK: sifatli rejim suhbatdoshni jimlikda qoldirdi
+
+Foydalanuvchi: «mikrofon yana ishlamay qoldi, o'zbekcha gapimning
+tarjimasini ikkinchi odam eshitmayapti — kecha eshitilayotgan edi».
+Keyin tasdiqladi: «sifatli tarjimani o'chirganimdan keyin ishlab ketdi».
+
+### Ildiz sabab (ikkita, ikkalasi ham meniki)
+
+Log (`conference` 0.9.78, 11:20):
+
+```
+[SIFAT] matn modeli: 'gemini-omni-flash-preview'
+[SIFAT] ishlamadi (400: This model only supports Interactions API)
+        — odatdagi tarjimaga qaytdik
+```
+
+1. **Avtomatik model tanlash noto'g'ri modelni oldi.** 56 ta modeldan
+   nom bo'yicha saralab `gemini-omni-flash-preview` tanlangan — u
+   `generate_content` ni umuman qo'llab-quvvatlamaydi.
+
+2. **Ashaddiy xato: rejim o'zini isbotlamasdan turib "egallab" oldi.**
+   Yoqilishi bilan Gemini'ning TAYYOR audiosi tashlanardi, o'zi esa
+   birinchi gapdagina yiqilardi. Oradagi ~10 soniyada foydalanuvchi
+   gapirdi (`11:20:04 UZ › yaxshi ishlar edim…`), tarjima MATNI chiqdi,
+   lekin **ovoz hech qayerga bormadi** — suhbatdosh jimlikni eshitdi.
+
+### Tuzatish
+
+- **Sifatli rejim endi FAQAT KIRUVCHI kanalda.** Chiquvchi yo'l —
+  suhbatdosh eshitadigan, biznes uchun eng muhim yo'l — sinalgan Live
+  zanjirida qoladi. Tajribaviy zanjirni u yerga qo'yish xato edi.
+- **Rejim o'zini ISBOTLAMAGUNCHA jonli audio tashlanmaydi.** Ishga
+  tushishda `_verify_quality` kichik sinov chaqiruvini qiladi; faqat
+  matn ham, ovoz ham ishlagach `_quality_ready` yoqiladi. Ya'ni yomon
+  holatda ham foydalanuvchi **hech qachon jimlikda qolmaydi**.
+- **Bitta model o'rniga NOMZODLAR ro'yxati** sinab ko'riladi; ishlamagani
+  o'tkazib yuboriladi. Ma'lum yaramaydigan turkumlar (`omni`, `live`,
+  `tts`, `embed`, `image`, `vision`, `audio`) oldindan chiqariladi.
+- **Bo'sh tarjima endi jimgina tashlanmaydi** — rejim o'chadi va jonli
+  tarjimaga qaytiladi (aks holda gap yo'qolardi).
+- Tekshirilmagan holatda kelgan gaplar navbatga qo'yilmaydi (jonli audio
+  baribir yangrayapti — ikki marta eshitilmasin).
+
+Sinovda tasdiqlandi: yaroqsiz model o'tkazib yuborilib, ishlaydigani
+tanlanadi; hech qaysi model ishlamasa rejim yoqilmaydi va jonli audio
+o'z yo'lida qolaveradi; chiquvchi kanalda rejim umuman yoqilmaydi.
+
+**SABOQ:** tajribaviy zanjir ishlab turgan zanjirni O'ZINI ISBOTLAMASDAN
+almashtirmasligi kerak. To'g'ri tartib — avval sinov chaqiruvi, keyin
+almashtirish.

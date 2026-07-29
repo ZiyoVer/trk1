@@ -487,7 +487,16 @@ class Translator:
         # vaqtincha o'chirish uchun. Faqat INCOMING kanalda ishlatiladi.
         self.pause_event = asyncio.Event()
         # «Sifatli» rejim holati (gapni kutib to'liq tarjima qilish).
-        self.quality_mode = bool(getattr(args, "quality", False))
+        # SIFATLI REJIM FAQAT KIRUVCHI KANALDA ishlaydi.
+        # 2026-07-29 jonli nosozlik: rejim chiquvchi kanalga ham
+        # qo'llanib, suhbatdosh SIZNING tarjimangizni eshitmay qoldi.
+        # Chiquvchi yo'l — biznes uchun eng muhimi, u sinalgan Live
+        # zanjirida qoladi.
+        self.quality_mode = (
+            bool(getattr(args, "quality", False)) and self.channel != "OUTGOING"
+        )
+        # Rejim O'ZINI ISBOTLAMAGUNCHA jonli audio tashlanmaydi.
+        self._quality_ready = False
         self.sentence_buffer = SentenceBuffer()
         self._sentence_queue: asyncio.Queue[str] = asyncio.Queue()
         # Konveyerning ikkinchi bosqichi: tarjima tayyor, ovoz kutilmoqda.
@@ -572,17 +581,18 @@ class Translator:
             self._quality_client_cache = genai.Client(api_key=self._api_key)
         return self._quality_client_cache
 
-    def _pick_models(self) -> tuple[str, str]:
-        """Matn va TTS modellarini API'dan TOPADI (taxmin qilinmaydi).
+    def _pick_models(self) -> tuple[list[str], list[str]]:
+        """Matn va TTS uchun NOMZODLAR ro'yxatini qaytaradi.
 
-        Model nomlari vaqt o'tishi bilan o'zgaradi; kodga qattiq yozib
-        qo'ysak, model eskirganda rejim jimgina ishlamay qolardi. Shuning
-        uchun ro'yxat olinadi va mos keladigani tanlanadi. Foydalanuvchi
-        `--quality-model` / `--tts-model` bilan majburlashi mumkin."""
-        text_model = (self.args.quality_model or "").strip()
-        tts_model = (self.args.tts_model or "").strip()
-        if text_model and tts_model:
-            return text_model, tts_model
+        Ilgari bitta nom tanlanardi va u ishlamasa butun rejim yiqilardi.
+        2026-07-29 jonli nosozlik: avtomatik tanlov
+        `gemini-omni-flash-preview` ni ilib oldi, u esa
+        `generate_content` ni umuman qo'llab-quvvatlamaydi
+        ("This model only supports Interactions API"). Endi bir nechta
+        nomzod olinadi va ularning qaysi biri HAQIQATAN ishlashi
+        `_verify_quality` da kichik sinov chaqiruvi bilan aniqlanadi."""
+        forced_text = (self.args.quality_model or "").strip()
+        forced_tts = (self.args.tts_model or "").strip()
         names: list[str] = []
         with suppress(Exception):
             for model in self._quality_client().models.list():
@@ -590,22 +600,61 @@ class Translator:
                 if name:
                     names.append(name)
         self._log(f"[SIFAT] mavjud modellar: {len(names)} ta")
+        # Ma'lum yaramaydigan turkumlar: ovoz/jonli/vektor/rasm modellari
+        # va faqat boshqa API orqali ishlaydigan "omni" oilasi.
+        bad = ("tts", "live", "embed", "image", "vision", "omni", "audio")
+        text_candidates = [
+            n for n in sorted(names, reverse=True)
+            if "flash" in n.lower() and not any(b in n.lower() for b in bad)
+        ] or [
+            n for n in sorted(names, reverse=True)
+            if "gemini" in n.lower() and not any(b in n.lower() for b in bad)
+        ]
+        tts_candidates = [n for n in sorted(names, reverse=True) if "tts" in n.lower()]
+        if forced_text:
+            text_candidates = [forced_text]
+        if forced_tts:
+            tts_candidates = [forced_tts]
+        return text_candidates[:4], tts_candidates[:3]
 
-        def best(candidates: list[str]) -> str:
-            return sorted(candidates, reverse=True)[0] if candidates else ""
+    async def _verify_quality(self) -> None:
+        """Rejim O'ZINI ISBOTLAGUNCHA jonli audio tashlanmaydi.
 
-        if not tts_model:
-            tts_model = best([n for n in names if "tts" in n.lower()])
-        if not text_model:
-            usable = [
-                n for n in names
-                if "flash" in n.lower()
-                and not any(bad in n.lower() for bad in ("tts", "live", "embed", "image", "vision"))
-            ]
-            text_model = best(usable) or best(
-                [n for n in names if "gemini" in n.lower() and "tts" not in n.lower()]
+        Ilgari rejim darhol "egallab" olardi: Gemini'ning tayyor audiosi
+        tashlanar, o'zi esa birinchi gapda yiqilardi — natijada bir necha
+        soniya JIMLIK bo'lardi (suhbatdosh hech narsa eshitmasdi). Endi
+        avval kichik sinov chaqiruvi qilinadi va faqat ikkalasi ham
+        ishlagandan keyin rejim yoqiladi."""
+        try:
+            text_candidates, tts_candidates = await asyncio.to_thread(self._pick_models)
+            chosen_text = ""
+            for candidate in text_candidates:
+                try:
+                    self._text_model = candidate
+                    probe = await asyncio.to_thread(self._quality_translate, "Salom.")
+                    if probe:
+                        chosen_text = candidate
+                        break
+                except Exception as error:
+                    self._log(f"[SIFAT] {candidate} yaramadi: {type(error).__name__}")
+            chosen_tts = ""
+            for candidate in tts_candidates:
+                try:
+                    self._tts_model = candidate
+                    if await asyncio.to_thread(self._quality_speak, "Salom."):
+                        chosen_tts = candidate
+                        break
+                except Exception as error:
+                    self._log(f"[SIFAT] {candidate} (ovoz) yaramadi: {type(error).__name__}")
+            if not chosen_text or not chosen_tts:
+                raise RuntimeError("ishlaydigan model topilmadi")
+            self._text_model, self._tts_model = chosen_text, chosen_tts
+            self._quality_ready = True
+            self._log(
+                f"[SIFAT] TAYYOR — matn: {chosen_text!r} | ovoz: {chosen_tts!r}"
             )
-        return text_model, tts_model
+        except Exception as error:
+            self._fail_quality(error)
 
     def _quality_translate(self, sentence: str) -> str:
         """To'liq gapni matn modeli bilan tarjima qiladi (kontekst bilan)."""
@@ -727,7 +776,10 @@ class Translator:
                 sentence = await asyncio.wait_for(self._sentence_queue.get(), timeout=0.5)
             except (TimeoutError, asyncio.TimeoutError):
                 continue
-            if self._quality_failed:
+            if self._quality_failed or not self._quality_ready:
+                # Hali tekshirilmagan yoki o'chgan — jonli audio o'z yo'lida
+                # yangrayapti, shuning uchun bu gapni tashlaymiz (aks holda
+                # keyinroq ikkinchi marta eshitilardi).
                 continue
             # QO'SHNI TAKROR: Whisper/Live transkripti ba'zan oxirgi gapni
             # aynan qaytaradi ("brother brother brother" nosozligi). Aynan
@@ -739,11 +791,13 @@ class Translator:
                 continue
             self._last_sentence_norm = normalised
             try:
-                await self._ensure_models()
                 for part in self._split_for_request(sentence):
                     translated = await asyncio.to_thread(self._quality_translate, part)
                     if not translated:
-                        continue
+                        # Bo'sh javob (xavfsizlik filtri va h.k.) — jimgina
+                        # tashlab yuborsak gap YO'QOLADI. Rejimni o'chirib,
+                        # jonli tarjimaga qaytamiz.
+                        raise RuntimeError("matn modeli bo'sh javob qaytardi")
                     self._recent_pairs.append((part, translated))
                     self._log(f"{self.args.target_language.upper()} ›› {translated}")
                     await self._speech_queue.put(translated)
@@ -798,17 +852,6 @@ class Translator:
             if abs(second_seconds - expected) < abs(first_seconds - expected)
             else first
         )
-
-    async def _ensure_models(self) -> None:
-        if self._text_model and self._tts_model:
-            return
-        self._text_model, self._tts_model = await asyncio.to_thread(self._pick_models)
-        self._log(
-            f"[SIFAT] matn modeli: {self._text_model!r} | "
-            f"ovoz modeli: {self._tts_model!r}"
-        )
-        if not self._text_model or not self._tts_model:
-            raise RuntimeError("mos model topilmadi")
 
     def _fail_quality(self, error: Exception) -> None:
         """Rejimni o'chirib, odatdagi sinxron tarjimaga qaytaramiz."""
@@ -911,6 +954,7 @@ class Translator:
         device_watcher = asyncio.create_task(self._watch_output_device())
         quality_tasks = (
             [
+                asyncio.create_task(self._verify_quality()),
                 asyncio.create_task(self._watch_sentences()),
                 asyncio.create_task(self._translate_worker()),
                 asyncio.create_task(self._speak_worker()),
@@ -1057,7 +1101,7 @@ class Translator:
                     if part.inline_data and part.inline_data.data:
                         data = part.inline_data.data
                         self.output_bytes += len(data)
-                        if self.quality_mode and not self._quality_failed:
+                        if self.quality_mode and self._quality_ready:
                             # Sinxron modelning bo'lak-bo'lak audiosi
                             # IJRO ETILMAYDI — o'rniga to'liq gap tarjimasi
                             # yangraydi. (Rejim yiqilsa shu audio darhol
@@ -1066,7 +1110,7 @@ class Translator:
                         self.player.play(data)
                         if self.monitor_player is not None:
                             self.monitor_player.play(data)
-            if content.turn_complete and self.quality_mode and not self._quality_failed:
+            if content.turn_complete and self.quality_mode and self._quality_ready:
                 # Sifatli rejimda ijroni gap tarjimasi boshqaradi.
                 continue
             if content.turn_complete:
