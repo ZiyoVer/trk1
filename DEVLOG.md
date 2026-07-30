@@ -832,3 +832,37 @@ kelmasdi. Foydalanuvchi shuni so'radi.
   ham asosiy oyna bilan bir xil.
 
 Mantiqqa tegilmadi — faqat uslub satrlari va yorliq matnlari.
+
+## v0.9.84 — «Unhandled exception in script» — o'rnatuvchi endi yiqilmaydi
+
+Foydalanuvchi 0.9.83 ni o'rnatganda **«Unhandled exception in script»**
+xatosi chiqdi. Bu xabar bizning kodimizda yo'q — u **Inno Setup**
+o'rnatuvchisining `[Code]` bo'limida ushlanmagan istisno bo'lganda
+chiqadi.
+
+Avval fayl butunligi tekshirildi (yuklab olishda tarmoq uzilgan edi):
+reliz va CI nusxasining SHA256 **mos** (59 006 970 bayt) — demak fayl
+buzuq emas, sabab haqiqatan `[Code]` bo'limida.
+
+### Ildiz mulohaza
+
+`[Code]` bo'limi FAQAT QULAYLIK uchun: ishlab turgan dasturni yopadi
+(`taskkill /IM`) va eski versiyani jim o'chiradi. Bu ish bajarilmasa ham
+o'rnatish odatdagidek ustiga yozib davom etishi kerak edi — lekin
+istisno **butun o'rnatishni to'xtatib qo'ydi**. Ya'ni ikkilamchi qadam
+asosiy ishni buzdi.
+
+Aniq qaysi chaqiruv yiqilgani (registr o'qish, `taskkill` bloklangani,
+eski o'chiruvchi yo'qligi) mashinaga bog'liq va logsiz aniqlanmaydi —
+shuning uchun butun sinfni yopdik.
+
+### Tuzatish
+
+- `GetUninstallString` va `PrepareToInstall` ning **har bir qadami**
+  `try..except` ichiga olindi.
+- `Result` doim bo'sh qoladi — Inno uchun bu «to'siq yo'q, davom et»
+  degani. Ya'ni eski nusxani yopish/o'chirish qanday yiqilsa ham,
+  **o'rnatish to'xtamaydi**.
+
+SABOQ: yordamchi (ikkilamchi) qadam asosiy amalni to'xtatmasligi kerak.
+O'rnatuvchining `[Code]` bo'limida har chaqiruv himoyalangan bo'lsin.

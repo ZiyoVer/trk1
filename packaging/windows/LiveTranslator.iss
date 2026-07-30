@@ -1,5 +1,5 @@
 #define MyAppName "Live Translator"
-#define MyAppVersion "0.9.83"
+#define MyAppVersion "0.9.84"
 #define MyAppPublisher "Live Translator"
 #define MyAppExeName "Live Translator.exe"
 
@@ -91,12 +91,18 @@ var
   Key: String;
   Value: String;
 begin
-  { Per-user o'rnatish (PrivilegesRequired=lowest) -> odatda HKCU }
-  Key := 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{A1A35FA3-89DA-4D3C-A593-A2719144A515}_is1';
-  Value := '';
-  if not RegQueryStringValue(HKCU, Key, 'UninstallString', Value) then
-    RegQueryStringValue(HKLM, Key, 'UninstallString', Value);
-  Result := Value;
+  Result := '';
+  { Har bir qadam TRY ichida: registr o'qish ham istisno chiqarishi mumkin
+    (masalan siyosat bilan cheklangan mashinada). }
+  try
+    Key := 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{A1A35FA3-89DA-4D3C-A593-A2719144A515}_is1';
+    Value := '';
+    if not RegQueryStringValue(HKCU, Key, 'UninstallString', Value) then
+      RegQueryStringValue(HKLM, Key, 'UninstallString', Value);
+    Result := Value;
+  except
+    Result := '';
+  end;
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
@@ -104,6 +110,14 @@ var
   UninstallCmd: String;
   ResultCode: Integer;
 begin
+  { HECH QACHON YIQILMAYDI.
+
+    Jonli nosozlik (2026-07-30): foydalanuvchida o'rnatishda «Unhandled
+    exception in script» chiqdi. Bu bo'lim faqat QULAYLIK uchun — eski
+    nusxani yopib, o'chirib tashlaydi. U ishlamasa ham o'rnatish davom
+    etishi kerak edi, lekin istisno butun o'rnatishni to'xtatib qo'ydi.
+    Endi har bir qadam `try..except` ichida va `Result` doim bo'sh —
+    ya'ni o'rnatish har holatda davom etadi. }
   Result := '';
 
   { 1) Ishlab turgan dasturni (va dvigatel bolasini) majburan yopamiz.
@@ -112,22 +126,30 @@ begin
        jarayonni BUTUN DARAXTI bilan o'ldirardi. Yangilanishda o'rnatuvchi
        ilovaning bola jarayoni bo'lib ishga tushadi — ya'ni `/T` bilan
        o'rnatuvchi O'Z-O'ZINI o'ldirardi va yangilanish hech qachon
-       tugamasdi ("update qayta-qayta qilsam ham bo'lmayapti").
+       tugamasdi.
 
        `/T` kerak ham emas: dvigatel va AEC bola jarayonlari ham AYNAN
        shu nomdagi exe (PyInstaller `sys.executable`), demak `/IM` ularni
        nomi bo'yicha baribir yopadi. }
-  Exec(ExpandConstant('{sys}\taskkill.exe'), '/IM "Live Translator.exe" /F',
-       '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-  Sleep(1500);
+  try
+    Exec(ExpandConstant('{sys}\taskkill.exe'), '/IM "Live Translator.exe" /F',
+         '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    Sleep(1500);
+  except
+    { taskkill topilmasa yoki bloklangan bo'lsa — e'tibor bermaymiz }
+  end;
 
   { 2) Eski versiyani jim o'chiramiz (bo'lsa). Xato bo'lsa ham davom etamiz:
        o'chirilmasa ham o'rnatish odatdagidek ustiga yozadi. }
-  UninstallCmd := RemoveQuotes(GetUninstallString());
-  if UninstallCmd <> '' then
-  begin
-    Exec(UninstallCmd, '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART',
-         '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-    Sleep(1500);
+  try
+    UninstallCmd := RemoveQuotes(GetUninstallString());
+    if UninstallCmd <> '' then
+    begin
+      Exec(UninstallCmd, '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART',
+           '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+      Sleep(1500);
+    end;
+  except
+    { eski o'chiruvchi yo'q/buzuq bo'lsa — o'rnatish ustiga yozadi }
   end;
 end;
