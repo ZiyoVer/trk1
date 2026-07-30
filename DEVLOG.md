@@ -957,3 +957,14 @@ Quick Settings paneli **383 px** kenglikda edi. Shunga moslandi:
 - Sarlavha ixchamlashdi (logo 30, sarlavha 14px, tugmalar 28×26).
 - Plitka yozuvi «Tarjimani boshlash» → «Boshlash» (ishlaganda
   «Translating»), balandligi 46 px.
+
+## v0.9.88 — Burchakka qotib turadi, minus yo'q, balandlik 430
+
+Foydalanuvchi talablari (2026-07-30):
+1. Balandlik yana kichraytirildi: 480 → **430**.
+2. **Oyna surib bo'lmaydi** — tizim paneli kabi burchakda QOTIB turadi.
+   Drag handlerlar olib tashlandi; Windows'da `showEvent` har
+   ko'rsatilganda oynani soat yonidagi burchakka qaytaradi.
+3. **Minus (–) tugmasi olib tashlandi** — yopish (✕) baribir tray'ga
+   yashiradi (tarjima ketayotganda), tray belgisi esa ochish/yopishni
+   boshqaradi.

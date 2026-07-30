@@ -207,7 +207,7 @@ CHECKBOX_STYLE = (
     "border: 1px solid #33456080; background: #131e30; } "
     "QCheckBox::indicator:checked { background: #15845a; border-color: #15845a; }"
 )
-APP_VERSION = "0.9.87"
+APP_VERSION = "0.9.88"
 
 
 def _read_channel() -> str:
@@ -671,14 +671,13 @@ class TranslatorWindow(QWidget):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle(APP_NAME)
-        self.setFixedSize(385, 480)
+        self.setFixedSize(385, 430)
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
             | Qt.WindowType.WindowStaysOnTopHint
             | Qt.WindowType.Tool
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.drag_offset = None
         self.process: QProcess | None = None
         self.stop_requested = False
         self.quit_requested = False
@@ -880,12 +879,6 @@ class TranslatorWindow(QWidget):
         settings.setFixedSize(28, 26)
         settings.setStyleSheet(HEADER_BUTTON_STYLE)
         settings.clicked.connect(self.edit_settings)
-        minimize = QPushButton(fluent_glyph(0xE921, "–"))
-        minimize.setAccessibleName("Kichraytirish")
-        minimize.setToolTip("Kichraytirish — menyu panelida qoladi")
-        minimize.setFixedSize(28, 26)
-        minimize.setStyleSheet(HEADER_BUTTON_STYLE)
-        minimize.clicked.connect(self._minimize_window)
         close = QPushButton(fluent_glyph(0xE8BB, "✕"))
         close.setAccessibleName("Yopish")
         close.setToolTip("Yopish")
@@ -898,7 +891,6 @@ class TranslatorWindow(QWidget):
         header.addWidget(self.status)
         header.addStretch()
         header.addWidget(settings)
-        header.addWidget(minimize)
         header.addWidget(close)
         layout.addLayout(header)
 
@@ -2775,7 +2767,7 @@ class TranslatorWindow(QWidget):
         self.duplex_outgoing_caption_panel.setVisible(True)
         self.language_label.setText("Tillar")
         # 530 → 596: «Meeting o'zbekcha» belgisi va navbat ko'rsatkichi.
-        self.setFixedSize(385, 480)
+        self.setFixedSize(385, 430)
         self._sync_meeting_uz_widgets()
         self._reset_captions()
         if apply_devices:
@@ -4509,16 +4501,16 @@ class TranslatorWindow(QWidget):
 
         threading.Thread(target=finish, daemon=True).start()
 
-    def mousePressEvent(self, event: QMouseEvent) -> None:
-        if event.button() == Qt.MouseButton.LeftButton:
-            self.drag_offset = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+    # SURISH OLIB TASHLANDI (2026-07-30 foydalanuvchi talabi): oyna tizim
+    # paneli (Quick Settings) kabi burchakka yopishgan holda QOTIB turadi —
+    # "siljitib bo'lmasin, o'sha yerda qotsin, doim shunday bo'lsin".
+    # Windows'da har ko'rsatilganda `showEvent` uni soat yonidagi burchakka
+    # qaytaradi.
 
-    def mouseMoveEvent(self, event: QMouseEvent) -> None:
-        if self.drag_offset is not None and event.buttons() & Qt.MouseButton.LeftButton:
-            self.move(event.globalPosition().toPoint() - self.drag_offset)
-
-    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
-        self.drag_offset = None
+    def showEvent(self, event) -> None:  # noqa: ANN001
+        if platform.system() == "Windows":
+            self._position_near_tray()
+        super().showEvent(event)
 
     def closeEvent(self, event) -> None:  # noqa: ANN001
         tray = getattr(self, "tray", None)
