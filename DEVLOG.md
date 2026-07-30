@@ -985,3 +985,22 @@ ko'chirildi — qaytdi. Cheksiz halqa yo'q: qaytgach pos == locked.
   kenglik, tugmalar kichraytirildi.
 - 0.9.89 dagi joy qulfi shu relizda birga chiqdi (alohida e'lon
   qilinmadi).
+
+## v0.9.91 — Jonli to'lqin, qotgan til tanlash, barqaror chegaralar
+
+Foydalanuvchi talablari:
+1. **Tarjima paytida til tanlash QOTADI** — rejim o'rtada almashsa Gemini
+   sessiyasi buzilardi; endi kombolar `running` da o'chadi.
+2. **«Meeting tarjimasi» va «Siz: …» yozuvlari olib tashlandi** — matn
+   uzayganda to'lqinni surib, chegaralar sakrab turardi. Tasmada endi
+   faqat JONLI to'lqin.
+3. **To'lqin real vaqt ovozga mos harakatlanadi**: transkript satri
+   kelganda `pulse()` (daraja 1.0), keyin o'zi so'nadi; taymer (80 ms)
+   FAQAT tarjima ishlayotganda yuradi. 0.9.78 qotish saboqi hisobga
+   olindi: hech qanday setStyleSheet/tooltip yo'q, faqat 30 px maydonni
+   `update()` bilan qayta chizish — arzon va xavfsiz.
+4. **Chegaralar surilmaydi**: panel matnlarining balandligi endi layoutni
+   boshqarmaydi (`QSizePolicy.Ignored`) — uzun gap panel ichida qoladi.
+
+Sinovda tasdiqlandi: kombolar qotdi/ochildi, puls olib so'ndi, uzun matn
+chegarani surmadi, taymer to'xtaganda o'chdi.

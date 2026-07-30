@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import platform
 import re
@@ -208,7 +209,7 @@ CHECKBOX_STYLE = (
     "border: 1px solid #33456080; background: #131e30; } "
     "QCheckBox::indicator:checked { background: #15845a; border-color: #15845a; }"
 )
-APP_VERSION = "0.9.90"
+APP_VERSION = "0.9.91"
 
 
 def _read_channel() -> str:
@@ -283,40 +284,68 @@ def is_expected_engine_exit(exit_code: int, stop_requested: bool) -> bool:
 
 
 class Waveform(QWidget):
-    """Pastki tasmadagi to'lqin tasviri. Faqat bezak — TAYMER YO'Q.
+    """Jonli ovoz tasmasi — nutq kelganda harakatlanadi, jimlikda tinchlanadi.
 
-    Ataylab statik: 0.9.78 dagi nosozlik davriy qayta chizish GUI'ni
-    tiqib qo'yishi mumkinligini ko'rsatdi. Bu yerda hech qanday davriy
-    ish yo'q, shuning uchun qotish xavfi ham yo'q.
+    QOTISH XAVFI YO'Q (0.9.78 saboqidan): u yerda muammo sekundiga 5 marta
+    `setStyleSheet` + tray tooltip yangilash edi (uslub qayta tahlili +
+    Windows shell chaqiruvi). Bu yerda esa:
+      • taymer FAQAT tarjima ishlayotganda yuradi (80 ms);
+      • har tik faqat `update()` — kichkina 30 px maydonni qayta chizish,
+        hech qanday uslub/layout ishi yo'q;
+      • ovoz darajasi tashqaridan `pulse()` bilan keladi (transkript satri
+        kelganda) va o'z-o'zidan so'nadi — davriy so'rov yo'q.
     """
-
-    BARS = (
-        3, 5, 4, 7, 5, 9, 6, 12, 8, 15, 10, 18, 12, 22, 14, 19, 11, 24, 16, 21,
-        13, 26, 15, 20, 12, 23, 14, 18, 10, 22, 13, 25, 16, 20, 12, 17, 9, 21,
-        13, 24, 15, 19, 11, 16, 8, 13, 6, 10, 5, 7, 4, 5, 3, 4,
-    )
 
     def __init__(self, parent=None) -> None:  # noqa: ANN001
         super().__init__(parent)
         self.setMinimumHeight(30)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        self._phase = 0
+        self._level = 0.0
+        self._timer = QTimer(self)
+        self._timer.setInterval(80)
+        self._timer.timeout.connect(self._tick)
+
+    def set_running(self, running: bool) -> None:
+        if running:
+            if not self._timer.isActive():
+                self._timer.start()
+        else:
+            self._timer.stop()
+            self._level = 0.0
+            self.update()
+
+    def pulse(self) -> None:
+        """Nutq keldi — to'lqin jonlanadi (keyin o'zi so'nadi)."""
+        self._level = 1.0
+
+    def _tick(self) -> None:
+        self._phase += 1
+        self._level = max(0.0, self._level * 0.94 - 0.004)
+        self.update()
 
     def paintEvent(self, _event) -> None:  # noqa: ANN001
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QColor("#1a73e8"))
-        count = len(self.BARS)
-        step = max(2.0, self.width() / (count + 2))
-        middle = self.height() / 2
-        for index, value in enumerate(self.BARS):
-            height = max(2.0, value * self.height() / 30.0)
+        width = self.width()
+        height = self.height()
+        step = 6.0
+        count = max(8, int(width / step))
+        middle = height / 2
+        for index in range(count):
+            # Deterministik "tasodifiy" balandlik: ikki sinus qorishmasi,
+            # faza siljishi harakat beradi, `_level` amplituda beradi.
+            ripple = abs(
+                math.sin(0.9 * index + self._phase * 0.55)
+                * math.sin(1.7 * index - self._phase * 0.33)
+            )
+            bar = max(2.0, height * (0.08 + 0.84 * self._level * ripple))
             x = index * step
             painter.drawRoundedRect(
-                QRectF(x, middle - height / 2, max(1.6, step * 0.42), height), 1.2, 1.2
+                QRectF(x, middle - bar / 2, 2.6, bar), 1.2, 1.2
             )
-        painter.drawEllipse(QRectF(count * step, middle - 4, 8, 8))
-
 
 class ActionTile(QFrame):
     """Keng tugma-plitka: yoqilganda rangli, o'chirilganda oq."""
@@ -973,6 +1002,11 @@ class TranslatorWindow(QWidget):
             Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft
         )
         self.source_text.setStyleSheet("font-size: 15px; color: #1b1b1f;")
+        # Matn uzayganda panel chegaralarini SURMASIN — balandlikni layout
+        # emas, panel belgilaydi (matn sig'maganicha qisqaradi).
+        self.source_text.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Ignored
+        )
         heard_layout.addLayout(heard_head)
         heard_layout.addWidget(self.source_text, 1)
 
@@ -999,6 +1033,9 @@ class TranslatorWindow(QWidget):
             Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft
         )
         self.target_text.setStyleSheet("font-size: 15px; color: #1b1b1f;")
+        self.target_text.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Ignored
+        )
         translated_layout.addLayout(translated_head)
         translated_layout.addWidget(self.target_text, 1)
 
@@ -1015,21 +1052,14 @@ class TranslatorWindow(QWidget):
         )
         strip = QHBoxLayout(self.duplex_outgoing_caption_panel)
         strip.setContentsMargins(12, 6, 12, 6)
-        strip.setSpacing(10)
-        self.duplex_outgoing_caption_title = QLabel("Meeting tarjimasi")
-        self.duplex_outgoing_caption_title.setStyleSheet(
-            "font-size: 14px; color: #1b1b1f;"
-        )
-        self.duplex_outgoing_original_text = QLabel("Siz: gap kutilmoqda…")
-        self.duplex_outgoing_original_text.setStyleSheet(
-            "font-size: 13.5px; color: #1a73e8;"
-        )
-        self.duplex_outgoing_original_text.setAlignment(
-            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
-        )
-        strip.addWidget(self.duplex_outgoing_caption_title)
-        strip.addWidget(Waveform(), 1)
-        strip.addWidget(self.duplex_outgoing_original_text)
+        # «Meeting tarjimasi» yozuvi va «Siz: …» matni OLIB TASHLANDI
+        # (foydalanuvchi talabi) — matn uzayganda to'lqinni surib, chegaralar
+        # sakrab turardi. Endi tasmada faqat JONLI to'lqin. Yozuv widgetlari
+        # ko'rinmas idishda qoladi (kod ularga matn yozaveradi).
+        self.duplex_outgoing_caption_title = QLabel("", self._hidden_hints)
+        self.duplex_outgoing_original_text = QLabel("", self._hidden_hints)
+        self.wave = Waveform()
+        strip.addWidget(self.wave, 1)
         layout.addWidget(self.duplex_outgoing_caption_panel)
 
         # ----------------- KO'RINMAS WIDGETLAR -----------------
@@ -3204,6 +3234,12 @@ class TranslatorWindow(QWidget):
         self._last_ready_state = ready
         self.start_button.setEnabled(not running and ready)
         self.stop_button.setEnabled(running)
+        # Tarjima ketayotganda til tanlash QOTADI (foydalanuvchi talabi):
+        # rejim o'rtada almashsa Gemini sessiyasi buziladi.
+        with suppress(Exception):
+            self.your_language_select.setEnabled(not running)
+            self.meeting_language_select.setEnabled(not running)
+            self.wave.set_running(running)
         # Plitkalar haqiqiy holatni ko'rsatsin (Start bosilgach rangli bo'ladi).
         self._sync_tiles()
         self.direction.setEnabled(not running)
@@ -3830,6 +3866,11 @@ class TranslatorWindow(QWidget):
             if candidate in {"INCOMING", "OUTGOING"}:
                 channel = candidate
                 line = remainder
+        if "\u203a " in line or "› " in line:
+            # Transkript satri keldi — jonli to'lqin puls oladi (arzon:
+            # faqat bitta float o'zgaradi, chizish taymerda).
+            with suppress(Exception):
+                self.wave.pulse()
         if line.startswith("Xato:"):
             self.last_engine_error = line.removeprefix("Xato:").strip()
             return
