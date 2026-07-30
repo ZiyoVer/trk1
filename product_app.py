@@ -209,7 +209,7 @@ CHECKBOX_STYLE = (
     "border: 1px solid #33456080; background: #131e30; } "
     "QCheckBox::indicator:checked { background: #15845a; border-color: #15845a; }"
 )
-APP_VERSION = "0.9.91"
+APP_VERSION = "0.9.92"
 
 
 def _read_channel() -> str:
@@ -991,9 +991,13 @@ class TranslatorWindow(QWidget):
         heard_layout.setContentsMargins(14, 12, 12, 14)
         heard_layout.setSpacing(10)
         heard_head = QHBoxLayout()
-        self.source_language = QLabel(fluent_glyph(0xE720, "\U0001F3A4"))
-        self.source_language.setStyleSheet(f"font-size: 17px; color: #1a73e8; {ICON_FONT}")
-        heard_head.addWidget(self.source_language)
+        # DIQQAT: ikon yorlig'i AJRATILDI. Ilgari bu yerda `source_language`
+        # turardi, lekin dvigatel matni («Meeting · UZ») aynan shu widgetga
+        # yoziladi — natijada tarjima paytida ikon o'rnida «Meeting Meeting»
+        # yozuvi chiqib qolardi (2026-07-30 jonli nosozlik).
+        self._mic_icon = QLabel(fluent_glyph(0xE720, "\U0001F3A4"))
+        self._mic_icon.setStyleSheet(f"font-size: 17px; color: #1a73e8; {ICON_FONT}")
+        heard_head.addWidget(self._mic_icon)
         heard_head.addStretch()
         heard_head.addWidget(self.your_language_select)
         self.source_text = QLabel("Gap kutilmoqda…")
@@ -1020,11 +1024,11 @@ class TranslatorWindow(QWidget):
         translated_layout.setContentsMargins(14, 12, 12, 14)
         translated_layout.setSpacing(10)
         translated_head = QHBoxLayout()
-        self.target_language = QLabel(fluent_glyph(0xE8C1, "文"))
-        self.target_language.setStyleSheet(
+        self._translate_icon = QLabel(fluent_glyph(0xE8C1, "文"))
+        self._translate_icon.setStyleSheet(
             f"font-size: 17px; color: #5b3fd4; font-weight: 700; {ICON_FONT}"
         )
-        translated_head.addWidget(self.target_language)
+        translated_head.addWidget(self._translate_icon)
         translated_head.addStretch()
         translated_head.addWidget(self.meeting_language_select)
         self.target_text = QLabel("Tarjima shu yerda chiqadi…")
@@ -1063,6 +1067,9 @@ class TranslatorWindow(QWidget):
         layout.addWidget(self.duplex_outgoing_caption_panel)
 
         # ----------------- KO'RINMAS WIDGETLAR -----------------
+        # Dvigatel matn yozadigan yorliqlar (ekranda ko'rinmaydi).
+        self.source_language = QLabel("", self._hidden_hints)
+        self.target_language = QLabel("", self._hidden_hints)
         self.route_hint = QLabel("", self._hidden_hints)
         self.meet_mic_hint = QLabel("", self._hidden_hints)
         self.update_hint = QLabel("", self._hidden_hints)
@@ -1118,6 +1125,7 @@ class TranslatorWindow(QWidget):
             self._hidden_hints,
         )
         for widget in (
+            self.source_language, self.target_language,
             self.route_hint, self.meet_mic_hint, self.update_hint, self.update_button,
             self.start_button, self.stop_button, self.input_device, self.output_device,
             self.duplex_outgoing_input, self.duplex_outgoing_output,
@@ -1181,18 +1189,24 @@ class TranslatorWindow(QWidget):
             self.tile_quality.set_active(getattr(self, "quality_mode", False))
 
     @staticmethod
-    def _tray_pixmap(size: int = 22) -> QIcon:
-        """Menyu paneli uchun template ikon (qora + shaffof).
+    def _tray_pixmap(size: int = 22, running: bool = False) -> QIcon:
+        """Menyu paneli ikoni.
 
-        macOS template ikonlari yorug'/qorong'i panelga o'zi moslashadi —
-        rangli ikon qo'yilsa panelda kir ko'rinadi.
+        `running=True` — tarjima ketayotganda ikon YASHIL bo'ladi
+        (foydalanuvchi talabi: "tarjima yoqilganda soat oldidagi ikon
+        yashil bo'lib tursin, o'chganda odatdagi holatida").
+
+        Odatdagi holat — template ikon (qora + shaffof): macOS uni
+        yorug'/qorong'i panelga o'zi moslashtiradi. Yashil holatda esa
+        template O'CHIRILADI, aks holda tizim rangni bosib, yashil
+        ko'rinmasdi.
         """
         pixmap = QPixmap(size, size)
         pixmap.fill(Qt.transparent)
         painter = QPainter(pixmap)
         painter.setRenderHint(QPainter.Antialiasing)
         painter.setPen(Qt.NoPen)
-        painter.setBrush(QColor("#000000"))
+        painter.setBrush(QColor("#22c55e" if running else "#000000"))
         bars = (0.34, 0.62, 1.0, 0.62, 0.34)
         bar_width = size * 0.105
         gap = size * 0.075
@@ -1209,7 +1223,9 @@ class TranslatorWindow(QWidget):
             x += bar_width + gap
         painter.end()
         icon = QIcon(pixmap)
-        icon.setIsMask(True)
+        # Yashil holatda mask BO'LMASLIGI shart — aks holda tizim o'z rangini
+        # qo'yib, yashil yo'qoladi.
+        icon.setIsMask(not running)
         return icon
 
     def _build_tray(self) -> None:
@@ -2795,8 +2811,6 @@ class TranslatorWindow(QWidget):
             captions["target"] = ""
         self.duplex_outgoing_original_text.setText("Siz: gap kutilmoqda…")
         self.duplex_outgoing_target_text.setText("Tarjima: shu yerda chiqadi…")
-        self.source_language.setText(fluent_glyph(0xE720, "\U0001F3A4"))
-        self.target_language.setText(fluent_glyph(0xE8C1, "文"))
         self.source_text.setText("Gap kutilmoqda…")
         self.target_text.setText("Tarjima shu yerda chiqadi…")
 
@@ -3242,6 +3256,10 @@ class TranslatorWindow(QWidget):
             self.wave.set_running(running)
         # Plitkalar haqiqiy holatni ko'rsatsin (Start bosilgach rangli bo'ladi).
         self._sync_tiles()
+        # Tray ikoni: tarjima ketayotganda YASHIL, aks holda odatdagidek.
+        with suppress(Exception):
+            if self.tray is not None:
+                self.tray.setIcon(self._tray_pixmap(running=running))
         self.direction.setEnabled(not running)
         self.source_language_select.setEnabled(not running)
         self.target_language_select.setEnabled(not running)

@@ -1004,3 +1004,34 @@ Foydalanuvchi talablari:
 
 Sinovda tasdiqlandi: kombolar qotdi/ochildi, puls olib so'ndi, uzun matn
 chegarani surmadi, taymer to'xtaganda o'chdi.
+
+## v0.9.92 — «Meeting Meeting» yozuvi va yashil tray ikoni
+
+### 1. Ikon o'rnida «Meeting Meeting» chiqardi (jonli nosozlik)
+
+Foydalanuvchi: «tarjima qilayotganda nega meeting meeting degan yozuvlar
+chiqib qolyapti, logolar o'rnida».
+
+Sabab: yangi dizaynda panel ikonlari sifatida `source_language` va
+`target_language` widgetlari ishlatilgan edi — lekin dvigatel matni aynan
+o'sha ikkitasiga yoziladi:
+
+```python
+self.source_language.setText(f"{route_label}  ·  {language.upper()}")
+self.target_language.setText(f"{route_label}  ·  Tarjima  ·  …")
+```
+
+`route_label` = «Meeting», shuning uchun mikrofon va tarjima ikonlari
+o'rnida «Meeting · UZ» / «Meeting · Tarjima · …» paydo bo'lardi.
+
+Tuzatish: ko'rinadigan ikonlar AJRATILDI (`_mic_icon`, `_translate_icon`),
+`source_language`/`target_language` esa ko'rinmas idishga ko'chdi — eski
+kod ularga matn yozaveradi, ekranga chiqmaydi. Sinovda tasdiqlandi:
+dvigatel «Meeting · UZ» yozganda ikonlar o'zgarmadi.
+
+### 2. Tray ikoni tarjima paytida YASHIL
+
+`_tray_pixmap(running=True)` — yashil (#22c55e) ikon; `setIsMask(False)`
+bo'lishi SHART, aks holda tizim o'z rangini bosib yashilni yo'q qiladi.
+Odatdagi holatda avvalgidek qora template ikon (panel mavzusiga o'zi
+moslashadi). `_set_controls` har holat o'zgarganda ikonni yangilaydi.
