@@ -210,7 +210,7 @@ CHECKBOX_STYLE = (
     "border: 1px solid #33456080; background: #131e30; } "
     "QCheckBox::indicator:checked { background: #15845a; border-color: #15845a; }"
 )
-APP_VERSION = "0.9.94"
+APP_VERSION = "0.9.95"
 
 
 def _read_channel() -> str:
@@ -1751,8 +1751,11 @@ class TranslatorWindow(QWidget):
         if screen is None:
             return
         area = screen.availableGeometry()
+        # BURCHAKKA TIQILADI: oyna bilan ekran cheti orasida bo'shliq
+        # QOLMAYDI (foydalanuvchi: "o'sha burchakka tiqish kerak edi").
+        # `right()`/`bottom()` inklyuziv, shuning uchun +1.
         target = QPoint(
-            area.right() - self.width() - 12, area.bottom() - self.height() - 12
+            area.right() - self.width() + 1, area.bottom() - self.height() + 1
         )
         self._locked_position = target
         self.move(target)

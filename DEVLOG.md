@@ -1061,3 +1061,13 @@ ilgari alohida `QMessageBox` chiqardi.
 
 `SettingsDialog` sinfi kodda qoldi (boshqa joydan chaqirilishi mumkin),
 lekin asosiy yo'l endi ichki sahifa.
+
+## v0.9.95 — Oyna burchakka TIQILADI (bo'shliq qolmaydi)
+
+0.9.93 da men KARTA ichidagi chekinishni olib tashlagan edim, foydalanuvchi
+esa boshqa bo'shliqni — **oyna bilan ekran cheti orasidagi** joyni
+nazarda tutgan ekan («undan ko'ra o'sha burchakka tiqish kerak edida»).
+
+`_position_near_tray` da 12 px chekinish bor edi; endi 0 — oyna ish
+maydonining o'ng-past burchagiga tegib turadi (`right()`/`bottom()`
+inklyuziv bo'lgani uchun +1). Sinovda: o'ngda 0 px, pastda 0 px.
