@@ -209,7 +209,7 @@ CHECKBOX_STYLE = (
     "border: 1px solid #33456080; background: #131e30; } "
     "QCheckBox::indicator:checked { background: #15845a; border-color: #15845a; }"
 )
-APP_VERSION = "0.9.92"
+APP_VERSION = "0.9.93"
 
 
 def _read_channel() -> str:
@@ -863,7 +863,9 @@ class TranslatorWindow(QWidget):
         (ko'rinmas ota) ichida yashaydi — kod ularga matn yozaveradi,
         ekranda chiqmaydi."""
         root = QVBoxLayout(self)
-        root.setContentsMargins(10, 10, 10, 10)
+        # Karta oynani chetgacha to'ldiradi — ilgari har yonida 10 px
+        # shaffof chekinish qolib ketardi (foydalanuvchi ko'rsatdi).
+        root.setContentsMargins(0, 0, 0, 0)
         card = QFrame()
         card.setObjectName("card")
         card.setStyleSheet(
@@ -884,8 +886,8 @@ class TranslatorWindow(QWidget):
         )
         root.addWidget(card)
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(12, 10, 12, 10)
-        layout.setSpacing(8)
+        layout.setContentsMargins(10, 9, 10, 9)
+        layout.setSpacing(7)
 
         self._hidden_hints = QWidget(self)
         self._hidden_hints.setVisible(False)
@@ -961,7 +963,7 @@ class TranslatorWindow(QWidget):
             lambda: self.quality_check.setChecked(not self.quality_check.isChecked())
         )
         tiles = QHBoxLayout()
-        tiles.setSpacing(14)
+        tiles.setSpacing(9)
         tiles.addWidget(self.tile_run, 1)
         tiles.addWidget(self.tile_quality, 1)
         layout.addLayout(tiles)
@@ -973,7 +975,7 @@ class TranslatorWindow(QWidget):
             self.your_language_select.addItem(language.name, language.code)
             self.meeting_language_select.addItem(language.name, language.code)
         for combo in (self.your_language_select, self.meeting_language_select):
-            combo.setFixedWidth(116)
+            combo.setFixedWidth(120)
             combo.setCursor(Qt.CursorShape.PointingHandCursor)
 
         self.caption_panel = QFrame()
@@ -988,7 +990,7 @@ class TranslatorWindow(QWidget):
 
         heard = QWidget()
         heard_layout = QVBoxLayout(heard)
-        heard_layout.setContentsMargins(14, 12, 12, 14)
+        heard_layout.setContentsMargins(12, 10, 10, 12)
         heard_layout.setSpacing(10)
         heard_head = QHBoxLayout()
         # DIQQAT: ikon yorlig'i AJRATILDI. Ilgari bu yerda `source_language`
@@ -1021,7 +1023,7 @@ class TranslatorWindow(QWidget):
             " border-top-right-radius: 13px; border-bottom-right-radius: 13px; }"
         )
         translated_layout = QVBoxLayout(translated)
-        translated_layout.setContentsMargins(14, 12, 12, 14)
+        translated_layout.setContentsMargins(12, 10, 10, 12)
         translated_layout.setSpacing(10)
         translated_head = QHBoxLayout()
         self._translate_icon = QLabel(fluent_glyph(0xE8C1, "文"))
@@ -1055,7 +1057,7 @@ class TranslatorWindow(QWidget):
             " border-radius: 13px; }"
         )
         strip = QHBoxLayout(self.duplex_outgoing_caption_panel)
-        strip.setContentsMargins(12, 6, 12, 6)
+        strip.setContentsMargins(10, 5, 10, 5)
         # «Meeting tarjimasi» yozuvi va «Siz: …» matni OLIB TASHLANDI
         # (foydalanuvchi talabi) — matn uzayganda to'lqinni surib, chegaralar
         # sakrab turardi. Endi tasmada faqat JONLI to'lqin. Yozuv widgetlari

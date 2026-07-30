@@ -1035,3 +1035,12 @@ dvigatel «Meeting · UZ» yozganda ikonlar o'zgarmadi.
 bo'lishi SHART, aks holda tizim o'z rangini bosib yashilni yo'q qiladi.
 Odatdagi holatda avvalgidek qora template ikon (panel mavzusiga o'zi
 moslashadi). `_set_controls` har holat o'zgarganda ikonni yangilaydi.
+
+## v0.9.93 — Yon chekinishlar olib tashlandi
+
+Foydalanuvchi skrinshotda ko'rsatdi: kartaning ikki yonida bo'sh joy
+qolgan. Sabab — ildiz layoutdagi `setContentsMargins(10, 10, 10, 10)`:
+oyna 385 px bo'lsa ham karta 365 px edi, ya'ni har yonida 10 px shaffof
+chekinish. Endi karta oynani **chetgacha** to'ldiradi (0 px), ichki
+bo'shliqlar ham biroz qisqartirildi (plitkalar orasi 14 → 9, panel
+ichi 14 → 12).
