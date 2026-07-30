@@ -111,6 +111,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import (
     QApplication,
+    QStackedWidget,
     QSizePolicy,
     QCheckBox,
     QComboBox,
@@ -209,7 +210,7 @@ CHECKBOX_STYLE = (
     "border: 1px solid #33456080; background: #131e30; } "
     "QCheckBox::indicator:checked { background: #15845a; border-color: #15845a; }"
 )
-APP_VERSION = "0.9.93"
+APP_VERSION = "0.9.94"
 
 
 def _read_channel() -> str:
@@ -882,10 +883,23 @@ class TranslatorWindow(QWidget):
                                          selection-color: #1b1b1f; border: 1px solid #e4e7ec; }
             QPushButton { border: 0; border-radius: 9px; padding: 8px 13px;
                           color: white; font-weight: 600; }
+            QLineEdit { background: #ffffff; color: #1b1b1f; border: 1px solid #e4e7ec;
+                        border-radius: 9px; padding: 7px 10px; font-size: 13px;
+                        selection-background-color: #cfe0fb; selection-color: #1b1b1f; }
+            QLineEdit:focus { border-color: #1a73e8; }
             """
         )
         root.addWidget(card)
-        layout = QVBoxLayout(card)
+        card_layout = QVBoxLayout(card)
+        card_layout.setContentsMargins(0, 0, 0, 0)
+        card_layout.setSpacing(0)
+        # SAHIFALAR: 0 — asosiy, 1 — sozlamalar. Sozlamalar ALOHIDA OYNA
+        # emas, shu oynaning ichida ochiladi (foydalanuvchi talabi).
+        self.pages = QStackedWidget()
+        card_layout.addWidget(self.pages)
+        main_page = QWidget()
+        self.pages.addWidget(main_page)
+        layout = QVBoxLayout(main_page)
         layout.setContentsMargins(10, 9, 10, 9)
         layout.setSpacing(7)
 
@@ -1141,6 +1155,8 @@ class TranslatorWindow(QWidget):
         ):
             hidden.addWidget(widget)
 
+        self._build_settings_page()
+
         initial_index = next(
             index
             for index, mode in enumerate(APP_MODES)
@@ -1173,6 +1189,104 @@ class TranslatorWindow(QWidget):
         self._ensure_physical_defaults()
         self._set_controls(running=False)
         self._sync_tiles()
+
+    def _build_settings_page(self) -> None:
+        """Sozlamalar — ALOHIDA OYNA emas, shu oynaning ikkinchi sahifasi."""
+        page = QWidget()
+        self.pages.addWidget(page)
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(10, 9, 10, 9)
+        layout.setSpacing(8)
+
+        head = QHBoxLayout()
+        head.setSpacing(8)
+        back = QPushButton(fluent_glyph(0xE72B, "‹"))
+        back.setFixedSize(28, 26)
+        back.setToolTip("Orqaga")
+        back.setStyleSheet(HEADER_BUTTON_STYLE)
+        back.clicked.connect(lambda: self.pages.setCurrentIndex(0))
+        head_title = QLabel("Sozlamalar")
+        head_title.setStyleSheet("font-size: 14px; font-weight: 700; color: #101114;")
+        head.addWidget(back)
+        head.addWidget(head_title)
+        head.addStretch()
+        layout.addLayout(head)
+
+        def field(label_text: str, widget) -> None:  # noqa: ANN001
+            caption = QLabel(label_text)
+            caption.setStyleSheet("color: #5b5b66; font-size: 11.5px; font-weight: 600;")
+            layout.addWidget(caption)
+            layout.addWidget(widget)
+
+        self.api_input = QLineEdit(self.api_key)
+        self.api_input.setEchoMode(QLineEdit.EchoMode.Password)
+        self.api_input.setPlaceholderText("AIza…")
+        field("Gemini API key", self.api_input)
+
+        self.control_input = QLineEdit(self.control_url)
+        self.control_input.setPlaceholderText("https://control.example.com — bo‘sh bo‘lsa developer mode")
+        field("Boshqaruv serveri", self.control_input)
+
+        self.license_input = QLineEdit(self.license_key)
+        self.license_input.setPlaceholderText("LT-XXXXXX-XXXXXX-XXXXXX-XXXXXX")
+        field("Litsenziya kaliti", self.license_input)
+
+        self.settings_hint = QLabel(
+            "Maxfiy qiymatlar faqat tizim Credential Manager ichida saqlanadi."
+        )
+        self.settings_hint.setWordWrap(True)
+        self.settings_hint.setStyleSheet("color: #5b5b66; font-size: 11px;")
+        layout.addWidget(self.settings_hint)
+        layout.addStretch(1)
+
+        actions = QHBoxLayout()
+        actions.addStretch()
+        cancel = QPushButton("Bekor qilish")
+        cancel.setStyleSheet(
+            "QPushButton { background: #ffffff; color: #3a3a40; border: 1px solid #e4e7ec; "
+            "border-radius: 9px; padding: 6px 14px; font-weight: 600; } "
+            "QPushButton:hover { background: #f2f4f7; }"
+        )
+        cancel.clicked.connect(self._cancel_settings_page)
+        save = QPushButton("Saqlash")
+        save.setStyleSheet(
+            "QPushButton { background: #1a73e8; color: white; border: 0; "
+            "border-radius: 9px; padding: 6px 18px; font-weight: 600; } "
+            "QPushButton:hover { background: #1668d4; }"
+        )
+        save.clicked.connect(self._save_settings_page)
+        actions.addWidget(cancel)
+        actions.addWidget(save)
+        layout.addLayout(actions)
+
+    def _cancel_settings_page(self) -> None:
+        self.api_input.setText(self.api_key)
+        self.control_input.setText(self.control_url)
+        self.license_input.setText(self.license_key)
+        self.pages.setCurrentIndex(0)
+
+    def _save_settings_page(self) -> None:
+        api_key = self.api_input.text().strip()
+        license_key = self.license_input.text().strip()
+        try:
+            control_url = validate_control_url(self.control_input.text().strip())
+            self._save_keyring(KEYRING_ACCOUNT, api_key)
+            self._save_keyring(KEYRING_CONTROL_URL_ACCOUNT, control_url)
+            self._save_keyring(KEYRING_LICENSE_ACCOUNT, license_key)
+        except (Exception, LicenseError) as error:
+            self.settings_hint.setText(str(error)[:160])
+            self.settings_hint.setStyleSheet("color: #c42b1c; font-size: 11px;")
+            return
+        self.api_key = api_key
+        self.control_url = control_url
+        self.license_key = license_key
+        self.license_client = None
+        self.pages.setCurrentIndex(0)
+        if not self.api_key:
+            self._set_status("API KEY KERAK", "#ef4444")
+        else:
+            self._set_status("TAYYOR", "#94a3b8")
+        self._set_controls(running=False)
 
     def _toggle_translation(self) -> None:
         """«Translating» plitkasi: bosilsa boshlaydi, yana bosilsa to'xtatadi."""
@@ -1771,35 +1885,18 @@ class TranslatorWindow(QWidget):
         self.install_driver()
 
     def edit_settings(self, _checked: bool = False, required: bool = False) -> None:
-        dialog = SettingsDialog(self, self.api_key, self.control_url, self.license_key)
-        # Ilova Dock'da ko'rinmaydi (menyu-panel rejimi) — dialog o'zi
-        # oldinga chiqmasa, boshqa oynalar ortida ko'rinmay qolardi.
-        dialog.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
-        dialog.show()
-        dialog.raise_()
-        dialog.activateWindow()
-        if dialog.exec() != QDialog.DialogCode.Accepted:
-            if required:
-                self._set_status("API KEY KERAK", "#ef4444")
-            return
-        try:
-            control_url = validate_control_url(dialog.control_url)
-            self._save_keyring(KEYRING_ACCOUNT, dialog.api_key)
-            self._save_keyring(KEYRING_CONTROL_URL_ACCOUNT, control_url)
-            self._save_keyring(KEYRING_LICENSE_ACCOUNT, dialog.license_key)
-        except (Exception, LicenseError) as error:
-            QMessageBox.critical(self, "Keychain xatosi", str(error))
-            return
-        self.api_key = dialog.api_key
-        self.control_url = control_url
-        self.license_key = dialog.license_key
-        self.license_client = None
-        if not self.api_key:
+        """Sozlamalarni SHU OYNA ichida ochadi (alohida oyna emas)."""
+        self.api_input.setText(self.api_key)
+        self.control_input.setText(self.control_url)
+        self.license_input.setText(self.license_key)
+        self.settings_hint.setText(
+            "Maxfiy qiymatlar faqat tizim Credential Manager ichida saqlanadi."
+        )
+        self.settings_hint.setStyleSheet("color: #5b5b66; font-size: 11px;")
+        self.pages.setCurrentIndex(1)
+        if required:
             self._set_status("API KEY KERAK", "#ef4444")
-            self._set_controls(running=False)
-            return
-        self._set_status("TAYYOR", "#94a3b8")
-        self._set_controls(running=False)
+        self._show_window()
 
     @staticmethod
     def _virtual_driver_names(refresh: bool = False) -> list[str]:

@@ -1044,3 +1044,20 @@ oyna 385 px bo'lsa ham karta 365 px edi, ya'ni har yonida 10 px shaffof
 chekinish. Endi karta oynani **chetgacha** to'ldiradi (0 px), ichki
 bo'shliqlar ham biroz qisqartirildi (plitkalar orasi 14 → 9, panel
 ichi 14 → 12).
+
+## v0.9.94 — Sozlamalar shu oynaning ichida ochiladi
+
+Foydalanuvchi: «settingga bosganimda asosiy ekranning o'zida ochilsin,
+alohida oyna bo'lib ochilyapti».
+
+Karta ichiga `QStackedWidget` qo'yildi: **0-sahifa — asosiy**,
+**1-sahifa — sozlamalar** (orqaga tugmasi bilan). `edit_settings()` endi
+dialog ochmaydi, shunchaki sahifani almashtiradi va oynani ko'rsatadi
+(API kalit yo'q bo'lgan holat ham shu yo'ldan ketadi).
+
+Saqlash/Bekor qilish sahifa ichida; xato bo'lsa (masalan noto'g'ri
+server manzili) xabar sahifadagi izoh qatorida qizil rangda chiqadi —
+ilgari alohida `QMessageBox` chiqardi.
+
+`SettingsDialog` sinfi kodda qoldi (boshqa joydan chaqirilishi mumkin),
+lekin asosiy yo'l endi ichki sahifa.
