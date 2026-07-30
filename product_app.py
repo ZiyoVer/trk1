@@ -196,7 +196,7 @@ CHECKBOX_STYLE = (
     "border: 1px solid #33456080; background: #131e30; } "
     "QCheckBox::indicator:checked { background: #15845a; border-color: #15845a; }"
 )
-APP_VERSION = "0.9.82"
+APP_VERSION = "0.9.83"
 
 
 def _read_channel() -> str:
@@ -384,10 +384,26 @@ class OutputPickerDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle(t("Ovoz qurilmasi"))
         self.setMinimumWidth(460)
+        self.setObjectName("outputPicker")
+        # Asosiy oyna bilan bir xil yorug' mavzu.
+        self.setStyleSheet(
+            """
+            QDialog#outputPicker { background: #f7f8fa; }
+            QLabel { color: #1b1b1f; font-size: 13px; }
+            QComboBox { background: #ffffff; color: #1b1b1f; border: 1px solid #e4e7ec;
+                        border-radius: 10px; padding: 9px 12px; font-size: 13.5px; }
+            QComboBox QAbstractItemView { background: #ffffff; color: #1b1b1f;
+                                         selection-background-color: #e9f0fa;
+                                         selection-color: #1b1b1f; border: 1px solid #e4e7ec; }
+            QPushButton { background: #ffffff; color: #3a3a40; border: 1px solid #e4e7ec;
+                          border-radius: 10px; padding: 8px 16px; font-weight: 600; }
+            QPushButton:hover { background: #f2f4f7; }
+            """
+        )
         self.chosen = ""
         layout = QVBoxLayout(self)
         title = QLabel(t("Tarjima ovozini qaysi qurilmadan eshitasiz?"))
-        title.setStyleSheet("font-size: 14px; font-weight: 700;")
+        title.setStyleSheet("font-size: 15px; font-weight: 700; color: #101114;")
         layout.addWidget(title)
         hint = QLabel(
             t(
@@ -396,7 +412,7 @@ class OutputPickerDialog(QDialog):
             )
         )
         hint.setWordWrap(True)
-        hint.setStyleSheet("color: #94a3b8; font-size: 12px;")
+        hint.setStyleSheet("color: #5b5b66; font-size: 12.5px;")
         layout.addWidget(hint)
         self.combo = QComboBox()
         for device in devices:
@@ -414,7 +430,7 @@ class OutputPickerDialog(QDialog):
         self.test_button.clicked.connect(self._test)
         row.addWidget(self.test_button)
         self.result = QLabel("")
-        self.result.setStyleSheet("color: #7dd3fc; font-size: 12px;")
+        self.result.setStyleSheet("color: #1a73e8; font-size: 12.5px;")
         row.addWidget(self.result, 1)
         layout.addLayout(row)
         buttons = QDialogButtonBox(
@@ -561,40 +577,44 @@ class SettingsDialog(QDialog):
         self.setObjectName("apiKeyDialog")
         self.setWindowTitle("Live Translator sozlamalari")
         self.setMinimumSize(520, 405)
+        # Asosiy oyna bilan BIR XIL yorug' mavzu (0.9.82 maketi). Ilgari bu
+        # oyna qorong'i qolib, ikkisi bir-biriga mos kelmasdi.
         self.setStyleSheet(
             """
-            QDialog#apiKeyDialog { background: #0f172a; }
-            QLabel { color: #f8fafc; font-size: 13px; }
-            QLineEdit { background: #1e293b; color: #f8fafc; border: 1px solid #475569;
-                        border-radius: 8px; padding: 11px 12px; font-size: 13px;
-                        selection-background-color: #2563eb; }
-            QPushButton { background: #334155; color: white; border: 0;
-                          border-radius: 7px; padding: 9px 18px; font-weight: 700; }
-            QPushButton:hover { background: #475569; }
+            QDialog#apiKeyDialog { background: #f7f8fa; }
+            QLabel { color: #1b1b1f; font-size: 13.5px; }
+            QLineEdit { background: #ffffff; color: #1b1b1f; border: 1px solid #e4e7ec;
+                        border-radius: 10px; padding: 11px 13px; font-size: 13.5px;
+                        selection-background-color: #cfe0fb; selection-color: #1b1b1f; }
+            QLineEdit:focus { border-color: #1a73e8; }
+            QPushButton { background: #ffffff; color: #3a3a40; border: 1px solid #e4e7ec;
+                          border-radius: 10px; padding: 9px 18px; font-weight: 600; }
+            QPushButton:hover { background: #f2f4f7; }
             """
         )
         layout = QVBoxLayout(self)
         title = QLabel("Ulanish va litsenziya")
-        title.setStyleSheet("font-size: 17px; font-weight: 700;")
+        title.setStyleSheet("font-size: 20px; font-weight: 700; color: #101114;")
         info = QLabel(
             "Maxfiy qiymatlar faqat tizim Keychain/Credential Manager ichida saqlanadi."
         )
         info.setWordWrap(True)
-        api_label = QLabel("GEMINI API KEY")
-        api_label.setStyleSheet("color: #94a3b8; font-size: 10px; font-weight: 700;")
+        info.setStyleSheet("color: #5b5b66; font-size: 12.5px;")
+        api_label = QLabel("Gemini API key")
+        api_label.setStyleSheet("color: #5b5b66; font-size: 12px; font-weight: 600;")
         self.api_input = QLineEdit(api_key)
         self.api_input.setEchoMode(QLineEdit.EchoMode.Password)
         self.api_input.setPlaceholderText("Google AI Studio API key")
         link = QLabel(
             "Bu kalit Gemini 3.5 Live Translate’ga ulanish uchun ishlatiladi."
         )
-        link.setStyleSheet("color: #60a5fa;")
-        server_label = QLabel("BOSHQARUV SERVERI")
-        server_label.setStyleSheet("color: #94a3b8; font-size: 10px; font-weight: 700;")
+        link.setStyleSheet("color: #1a73e8; font-size: 12.5px;")
+        server_label = QLabel("Boshqaruv serveri")
+        server_label.setStyleSheet("color: #5b5b66; font-size: 12px; font-weight: 600;")
         self.control_input = QLineEdit(control_url)
         self.control_input.setPlaceholderText("https://control.example.com — bo‘sh bo‘lsa developer mode")
-        license_label = QLabel("LITSENZIYA KALITI")
-        license_label.setStyleSheet("color: #94a3b8; font-size: 10px; font-weight: 700;")
+        license_label = QLabel("Litsenziya kaliti")
+        license_label.setStyleSheet("color: #5b5b66; font-size: 12px; font-weight: 600;")
         self.license_input = QLineEdit(license_key)
         self.license_input.setEchoMode(QLineEdit.EchoMode.Password)
         self.license_input.setPlaceholderText("LT-XXXXXX-XXXXXX-XXXXXX-XXXXXX")
@@ -605,9 +625,13 @@ class SettingsDialog(QDialog):
         buttons.rejected.connect(self.reject)
         save_button = buttons.button(QDialogButtonBox.StandardButton.Save)
         cancel_button = buttons.button(QDialogButtonBox.StandardButton.Cancel)
-        save_button.setText("SAQLASH")
-        save_button.setStyleSheet("background: #22c55e; color: white;")
-        cancel_button.setText("BEKOR QILISH")
+        save_button.setText("Saqlash")
+        save_button.setStyleSheet(
+            "QPushButton { background: #1a73e8; color: white; border: 0; "
+            "border-radius: 10px; padding: 9px 22px; font-weight: 600; } "
+            "QPushButton:hover { background: #1668d4; }"
+        )
+        cancel_button.setText("Bekor qilish")
         layout.addWidget(title)
         layout.addWidget(info)
         layout.addWidget(api_label)

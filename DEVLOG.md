@@ -817,3 +817,18 @@ tray menyusidan boshqariladi (u yerda allaqachon bor edi).
 
 To'lqin tasviri ATAYLAB statik — taymer yo'q. 0.9.78 dagi qotish aynan
 davriy qayta chizishdan kelib chiqqan edi.
+
+## v0.9.83 — Sozlamalar va ovoz qurilmasi oynalari ham yorug' mavzuga
+
+0.9.82 da faqat ASOSIY oyna yangi dizaynga o'tgan edi; sozlamalar oynasi
+(`SettingsDialog`) qorong'i (`#0f172a`) qolib, ikkisi bir-biriga mos
+kelmasdi. Foydalanuvchi shuni so'radi.
+
+- `SettingsDialog` — yorug' fon, oq maydonlar, ko'k «Saqlash» tugmasi,
+  yorliqlar bosh harfsiz («Gemini API key», «Boshqaruv serveri»,
+  «Litsenziya kaliti») — maketdagidek.
+- `OutputPickerDialog` («Tarjima ovozini qaysi qurilmadan eshitasiz?») —
+  o'z uslubi yo'q edi, ota oynadan meros olib aralash ko'rinardi. Endi u
+  ham asosiy oyna bilan bir xil.
+
+Mantiqqa tegilmadi — faqat uslub satrlari va yorliq matnlari.
