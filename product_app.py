@@ -208,7 +208,7 @@ CHECKBOX_STYLE = (
     "border: 1px solid #33456080; background: #131e30; } "
     "QCheckBox::indicator:checked { background: #15845a; border-color: #15845a; }"
 )
-APP_VERSION = "0.9.89"
+APP_VERSION = "0.9.90"
 
 
 def _read_channel() -> str:
@@ -327,7 +327,7 @@ class ActionTile(QFrame):
         super().__init__(parent)
         self._accent = accent
         self._active = False
-        self.setFixedHeight(46)
+        self.setFixedHeight(38)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         row = QHBoxLayout(self)
         row.setContentsMargins(12, 0, 12, 0)
@@ -588,7 +588,9 @@ class SettingsDialog(QDialog):
         super().__init__(parent)
         self.setObjectName("apiKeyDialog")
         self.setWindowTitle("Live Translator sozlamalari")
-        self.setMinimumSize(520, 405)
+        # Asosiy oyna bilan BIR XIL kenglik (385) — foydalanuvchi talabi:
+        # "settings page ham kichik bo'lsin asosiy page kabi".
+        self.setFixedSize(385, 356)
         # Asosiy oyna bilan BIR XIL yorug' mavzu (0.9.82 maketi). Ilgari bu
         # oyna qorong'i qolib, ikkisi bir-biriga mos kelmasdi.
         self.setStyleSheet(
@@ -596,17 +598,17 @@ class SettingsDialog(QDialog):
             QDialog#apiKeyDialog { background: #f7f8fa; }
             QLabel { color: #1b1b1f; font-size: 13.5px; }
             QLineEdit { background: #ffffff; color: #1b1b1f; border: 1px solid #e4e7ec;
-                        border-radius: 10px; padding: 11px 13px; font-size: 13.5px;
+                        border-radius: 9px; padding: 8px 11px; font-size: 13px;
                         selection-background-color: #cfe0fb; selection-color: #1b1b1f; }
             QLineEdit:focus { border-color: #1a73e8; }
             QPushButton { background: #ffffff; color: #3a3a40; border: 1px solid #e4e7ec;
-                          border-radius: 10px; padding: 9px 18px; font-weight: 600; }
+                          border-radius: 9px; padding: 6px 14px; font-weight: 600; }
             QPushButton:hover { background: #f2f4f7; }
             """
         )
         layout = QVBoxLayout(self)
         title = QLabel("Ulanish va litsenziya")
-        title.setStyleSheet("font-size: 20px; font-weight: 700; color: #101114;")
+        title.setStyleSheet("font-size: 16px; font-weight: 700; color: #101114;")
         info = QLabel(
             "Maxfiy qiymatlar faqat tizim Keychain/Credential Manager ichida saqlanadi."
         )
@@ -640,7 +642,7 @@ class SettingsDialog(QDialog):
         save_button.setText("Saqlash")
         save_button.setStyleSheet(
             "QPushButton { background: #1a73e8; color: white; border: 0; "
-            "border-radius: 10px; padding: 9px 22px; font-weight: 600; } "
+            "border-radius: 9px; padding: 6px 18px; font-weight: 600; } "
             "QPushButton:hover { background: #1668d4; }"
         )
         cancel_button.setText("Bekor qilish")
@@ -672,7 +674,7 @@ class TranslatorWindow(QWidget):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle(APP_NAME)
-        self.setFixedSize(385, 430)
+        self.setFixedSize(385, 392)
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
             | Qt.WindowType.WindowStaysOnTopHint
@@ -853,8 +855,8 @@ class TranslatorWindow(QWidget):
         )
         root.addWidget(card)
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(14, 12, 14, 12)
-        layout.setSpacing(10)
+        layout.setContentsMargins(12, 10, 12, 10)
+        layout.setSpacing(8)
 
         self._hidden_hints = QWidget(self)
         self._hidden_hints.setVisible(False)
@@ -1012,7 +1014,7 @@ class TranslatorWindow(QWidget):
             " border-radius: 13px; }"
         )
         strip = QHBoxLayout(self.duplex_outgoing_caption_panel)
-        strip.setContentsMargins(14, 8, 14, 8)
+        strip.setContentsMargins(12, 6, 12, 6)
         strip.setSpacing(10)
         self.duplex_outgoing_caption_title = QLabel("Meeting tarjimasi")
         self.duplex_outgoing_caption_title.setStyleSheet(
@@ -2793,7 +2795,7 @@ class TranslatorWindow(QWidget):
         self.duplex_outgoing_caption_panel.setVisible(True)
         self.language_label.setText("Tillar")
         # 530 → 596: «Meeting o'zbekcha» belgisi va navbat ko'rsatkichi.
-        self.setFixedSize(385, 430)
+        self.setFixedSize(385, 392)
         self._sync_meeting_uz_widgets()
         self._reset_captions()
         if apply_devices:

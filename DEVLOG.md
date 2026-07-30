@@ -977,3 +977,11 @@ bilan baribir siljitish mumkin ekan. Endi `moveEvent` qulfi bor: oyna
 QAYERGA siljitilmasin, keyingi event-aylanishda o'zi soat yonidagi
 burchakka qaytadi (`_locked_position`). Sinovda majburan (50,50) ga
 ko'chirildi — qaytdi. Cheksiz halqa yo'q: qaytgach pos == locked.
+
+## v0.9.90 — Yanada ixcham + sozlamalar ham kichik
+
+- Asosiy oyna 430 → **392**, plitkalar 46 → 38.
+- Sozlamalar oynasi **385×356** (edi 520×405) — asosiy oyna bilan bir xil
+  kenglik, tugmalar kichraytirildi.
+- 0.9.89 dagi joy qulfi shu relizda birga chiqdi (alohida e'lon
+  qilinmadi).
