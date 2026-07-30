@@ -866,3 +866,60 @@ shuning uchun butun sinfni yopdik.
 
 SABOQ: yordamchi (ikkilamchi) qadam asosiy amalni to'xtatmasligi kerak.
 O'rnatuvchining `[Code]` bo'limida har chaqiruv himoyalangan bo'lsin.
+
+## v0.9.85 — JIDDIY: 0.9.82–0.9.84 ochilishda yiqilardi (mening xatoyim)
+
+Foydalanuvchi rasm yubordi:
+
+```
+Failed to execute script 'product_app' due to unhandled exception:
+'PySide6.QtGui.QPixmap.__init__' called with wrong argument types:
+  PySide6.QtGui.QPixmap.__init__(TranslatorWindow, TranslatorWindow)
+```
+
+Ya'ni xato o'rnatuvchida EMAS (0.9.84 da o'rnatuvchini himoyalagan edim —
+u ham kerak edi, lekin sabab boshqa), **dasturning o'zida** edi.
+
+### Ildiz sabab
+
+0.9.82 da dizayn almashtirilganda `_build_ui` butunlay qayta yozildi.
+Kesish chizig'i `s.index("\\n    def ", ...)` bilan topilgan — u
+`_build_ui` dan KEYINGI metodning `def` qatoriga tushdi va oradagi
+**`@staticmethod` dekoratorini olib ketdi**:
+
+```
+-    @staticmethod
+     def _tray_pixmap(size: int = 22) -> QIcon:
+```
+
+Natijada `self._tray_pixmap()` chaqirilganda `self` `size` o'rniga
+tushdi → `QPixmap(self, self)` → dastur **ochilishida** yiqildi. Ya'ni
+0.9.82, 0.9.83, 0.9.84 Windows'da umuman ishlamagan.
+
+### Nega mening sinovim tutmadi
+
+macOS'dagi offscreen sinovda tizim tray'i YO'Q, shuning uchun
+`_build_tray` `QSystemTrayIcon.isSystemTrayAvailable()` False bo'lib
+darhol qaytadi va `_tray_pixmap` ga umuman yetib bormaydi. Oyna
+muvaffaqiyatli qurildi, rasm ham chiqdi — lekin Windows'da tray bor va
+o'sha qator ishga tushib yiqilgan.
+
+### Tuzatish va himoya
+
+1. `@staticmethod` qaytarildi.
+2. Boshqa dekoratorlar ham yo'qolmaganini tekshirdim (v0.9.81 bilan
+   solishtirib) — faqat shu bittasi yo'qolgan edi.
+3. **Yangi test: `tests/test_ui_contract.py`** — `TranslatorWindow`,
+   `SettingsDialog`, `OutputPickerDialog` dagi HAR BIR metod, agar u
+   `self` qabul qilmasa, `@staticmethod` bo'lishi shart. Test Qt
+   oynasidan mustaqil (`inspect.getattr_static`), shuning uchun tray
+   bo'lmagan muhitda ham ishlaydi. Dekoratorni ataylab olib tashlab
+   sinaldi — test yiqildi, ya'ni himoya haqiqiy.
+
+### SABOQLAR
+
+- Metodni blok bo'yicha almashtirganda kesish chizig'i **dekoratorni**
+  ushlab qolishi mumkin. Bloklarni `def` bo'yicha kesish xavfli.
+- «Oyna qurildi va rasm chiqdi» — Windows'da ishlaydi degani EMAS.
+  Tray, COM, audio yo'llari macOS offscreen'da umuman ishga tushmaydi.
+  Shuning uchun platformadan mustaqil shartnoma testlari kerak.

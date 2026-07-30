@@ -196,7 +196,7 @@ CHECKBOX_STYLE = (
     "border: 1px solid #33456080; background: #131e30; } "
     "QCheckBox::indicator:checked { background: #15845a; border-color: #15845a; }"
 )
-APP_VERSION = "0.9.84"
+APP_VERSION = "0.9.85"
 
 
 def _read_channel() -> str:
@@ -1144,6 +1144,7 @@ class TranslatorWindow(QWidget):
             self.tile_run.icon.setText("■" if running else "▶")
             self.tile_quality.set_active(getattr(self, "quality_mode", False))
 
+    @staticmethod
     def _tray_pixmap(size: int = 22) -> QIcon:
         """Menyu paneli uchun template ikon (qora + shaffof).
 
