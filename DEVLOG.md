@@ -923,3 +923,25 @@ o'sha qator ishga tushib yiqilgan.
 - «Oyna qurildi va rasm chiqdi» — Windows'da ishlaydi degani EMAS.
   Tray, COM, audio yo'llari macOS offscreen'da umuman ishga tushmaydi.
   Shuning uchun platformadan mustaqil shartnoma testlari kerak.
+
+## v0.9.86 — Flyout rejimi: soat yonidan chiqadi + rasmiy Fluent ikonlar
+
+Foydalanuvchi: «juda katta bo'lib ketgan oyna; soat oldidagi joyga
+bosganda o'sha yerdan chiqib, o'sha yerga yopishib turishi kerak;
+rasmiy premium ikonlardan foydalan».
+
+1. **O'lcham** 780×540 → **430×560** — Windows Quick Settings kabi ixcham
+   flyout. Ichki bo'shliqlar mos qisqartirildi.
+2. **Tray belgisi (chap tugma)** endi oynani soat yonidan ochadi va
+   ekranning o'ng-past burchagiga 12 px chekinish bilan YOPISHTIRADI
+   (`_position_near_tray`: tray geometriyasidan ekran aniqlanadi,
+   `availableGeometry` vazifa panelini chiqarib beradi). Yana bosilsa —
+   yashirinadi. O'ng tugma — avvalgidek menyu. Har ochilishda burchakka
+   qaytadi (surib qo'yilgan bo'lsa ham) — Quick Settings xatti-harakati.
+3. **Ikonlar** — Windows'ning RASMIY ikon shrifti **Segoe Fluent Icons**
+   (Win11; Win10 da MDL2 zaxira). Hech narsa o'rnatilmaydi, tizimda bor:
+   sozlamalar E713, kichraytirish E921, yopish E8BB, play E768, stop
+   E71A, yulduz E734, mikrofon E720, tarjima E8C1, odamlar E716.
+   macOS (faqat dev muhit) zaxira belgilarga tushadi.
+
+Mantiqqa tegilmadi; 72 test o'tdi.

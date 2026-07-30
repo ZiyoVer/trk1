@@ -178,15 +178,26 @@ from system_audio import (
 
 
 APP_NAME = "Live Translator"
+# Windows'ning RASMIY ikon shrifti (Segoe Fluent Icons — Win11, MDL2 — Win10).
+# Tizimda tayyor turadi, hech narsa o'rnatilmaydi. macOS'da (faqat dev) oddiy
+# belgi ko'rsatiladi.
+ICON_FONT = "font-family: 'Segoe Fluent Icons', 'Segoe MDL2 Assets';"
+
+
+def fluent_glyph(code: int, fallback: str) -> str:
+    """Windows'da rasmiy Fluent belgisi, boshqa tizimda zaxira matn."""
+    return chr(code) if platform.system() == "Windows" else fallback
+
+
 HEADER_BUTTON_STYLE = (
-    "QPushButton { background: #ffffff; color: #3a3a40; font-size: 16px; padding: 0; "
-    "border: 1px solid #e4e7ec; border-radius: 11px; } "
+    "QPushButton { background: #ffffff; color: #3a3a40; font-size: 13px; padding: 0; " + ICON_FONT + " "
+    "border: 1px solid #e4e7ec; border-radius: 10px; } "
     "QPushButton:hover { background: #f2f4f7; } "
     "QPushButton:pressed { background: #e8eaee; }"
 )
 CLOSE_BUTTON_STYLE = (
-    "QPushButton { background: #ffffff; color: #3a3a40; font-size: 15px; padding: 0; "
-    "border: 1px solid #e4e7ec; border-radius: 11px; } "
+    "QPushButton { background: #ffffff; color: #3a3a40; font-size: 12px; padding: 0; " + ICON_FONT + " "
+    "border: 1px solid #e4e7ec; border-radius: 10px; } "
     "QPushButton:hover { background: #fdeceb; color: #c42b1c; border-color: #f5c9c5; } "
     "QPushButton:pressed { background: #f8dcd9; }"
 )
@@ -196,7 +207,7 @@ CHECKBOX_STYLE = (
     "border: 1px solid #33456080; background: #131e30; } "
     "QCheckBox::indicator:checked { background: #15845a; border-color: #15845a; }"
 )
-APP_VERSION = "0.9.85"
+APP_VERSION = "0.9.86"
 
 
 def _read_channel() -> str:
@@ -315,13 +326,13 @@ class ActionTile(QFrame):
         super().__init__(parent)
         self._accent = accent
         self._active = False
-        self.setFixedHeight(62)
+        self.setFixedHeight(52)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         row = QHBoxLayout(self)
         row.setContentsMargins(18, 0, 18, 0)
         row.setSpacing(14)
         self.icon = QLabel(glyph)
-        self.icon.setStyleSheet("font-size: 19px; background: transparent;")
+        self.icon.setStyleSheet(f"font-size: 16px; background: transparent; {ICON_FONT}")
         self.label = QLabel(text)
         self.label.setStyleSheet(
             "font-size: 16px; font-weight: 600; background: transparent;"
@@ -358,7 +369,7 @@ class ActionTile(QFrame):
             )
             colour = "#1b1b1f"
         self.icon.setStyleSheet(
-            f"font-size: 19px; color: {colour}; background: transparent;"
+            f"font-size: 16px; color: {colour}; background: transparent; {ICON_FONT}"
         )
         self.label.setStyleSheet(
             f"font-size: 16px; font-weight: 600; color: {colour}; background: transparent;"
@@ -660,7 +671,7 @@ class TranslatorWindow(QWidget):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle(APP_NAME)
-        self.setFixedSize(780, 540)
+        self.setFixedSize(430, 560)
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
             | Qt.WindowType.WindowStaysOnTopHint
@@ -842,8 +853,8 @@ class TranslatorWindow(QWidget):
         )
         root.addWidget(card)
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(18, 16, 18, 16)
-        layout.setSpacing(13)
+        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setSpacing(10)
 
         self._hidden_hints = QWidget(self)
         self._hidden_hints.setVisible(False)
@@ -852,33 +863,33 @@ class TranslatorWindow(QWidget):
         # ----------------- SARLAVHA -----------------
         header = QHBoxLayout()
         header.setSpacing(12)
-        logo = QLabel("‖")
-        logo.setFixedSize(44, 44)
+        logo = QLabel(fluent_glyph(0xE767, "‖"))
+        logo.setFixedSize(34, 34)
         logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
         logo.setStyleSheet(
-            "background: #1a73e8; color: white; border-radius: 22px; "
-            "font-size: 19px; font-weight: 800;"
+            "background: #1a73e8; color: white; border-radius: 17px; "
+            f"font-size: 15px; font-weight: 800; {ICON_FONT}"
         )
         title = QLabel("Live Translator")
-        title.setStyleSheet("font-size: 24px; font-weight: 700; color: #101114;")
+        title.setStyleSheet("font-size: 17px; font-weight: 700; color: #101114;")
         self.status = QLabel("●  Tayyor")
-        self.status.setStyleSheet("color: #0f8b96; font-size: 15px; font-weight: 500;")
-        settings = QPushButton("⚙")
+        self.status.setStyleSheet("color: #0f8b96; font-size: 11.5px; font-weight: 500;")
+        settings = QPushButton(fluent_glyph(0xE713, "⚙"))
         settings.setAccessibleName("Sozlamalar")
         settings.setToolTip("Sozlamalar")
-        settings.setFixedSize(44, 40)
+        settings.setFixedSize(34, 30)
         settings.setStyleSheet(HEADER_BUTTON_STYLE)
         settings.clicked.connect(self.edit_settings)
-        minimize = QPushButton("–")
+        minimize = QPushButton(fluent_glyph(0xE921, "–"))
         minimize.setAccessibleName("Kichraytirish")
         minimize.setToolTip("Kichraytirish — menyu panelida qoladi")
-        minimize.setFixedSize(44, 40)
+        minimize.setFixedSize(34, 30)
         minimize.setStyleSheet(HEADER_BUTTON_STYLE)
         minimize.clicked.connect(self._minimize_window)
-        close = QPushButton("✕")
+        close = QPushButton(fluent_glyph(0xE8BB, "✕"))
         close.setAccessibleName("Yopish")
         close.setToolTip("Yopish")
-        close.setFixedSize(44, 40)
+        close.setFixedSize(34, 30)
         close.setStyleSheet(CLOSE_BUTTON_STYLE)
         close.clicked.connect(self.close)
         header.addWidget(logo)
@@ -918,9 +929,9 @@ class TranslatorWindow(QWidget):
         self.quality_check.setChecked(self.quality_mode)
         self.quality_check.toggled.connect(self._toggle_quality)
 
-        self.tile_run = ActionTile("▶", "Tarjimani boshlash", "#0f8b96")
+        self.tile_run = ActionTile(fluent_glyph(0xE768, "▶"), "Tarjimani boshlash", "#0f8b96")
         self.tile_run.clicked.connect(self._toggle_translation)
-        self.tile_quality = ActionTile("✦", "Sifatli tarjima", "#1a73e8")
+        self.tile_quality = ActionTile(fluent_glyph(0xE734, "✦"), "Sifatli tarjima", "#1a73e8")
         self.tile_quality.set_active(self.quality_mode)
         self.tile_quality.clicked.connect(
             lambda: self.quality_check.setChecked(not self.quality_check.isChecked())
@@ -938,7 +949,7 @@ class TranslatorWindow(QWidget):
             self.your_language_select.addItem(language.name, language.code)
             self.meeting_language_select.addItem(language.name, language.code)
         for combo in (self.your_language_select, self.meeting_language_select):
-            combo.setFixedWidth(150)
+            combo.setFixedWidth(126)
             combo.setCursor(Qt.CursorShape.PointingHandCursor)
 
         self.caption_panel = QFrame()
@@ -953,11 +964,11 @@ class TranslatorWindow(QWidget):
 
         heard = QWidget()
         heard_layout = QVBoxLayout(heard)
-        heard_layout.setContentsMargins(20, 16, 18, 18)
-        heard_layout.setSpacing(16)
+        heard_layout.setContentsMargins(14, 12, 12, 14)
+        heard_layout.setSpacing(10)
         heard_head = QHBoxLayout()
-        self.source_language = QLabel("\U0001F3A4")
-        self.source_language.setStyleSheet("font-size: 19px; color: #1a73e8;")
+        self.source_language = QLabel(fluent_glyph(0xE720, "\U0001F3A4"))
+        self.source_language.setStyleSheet(f"font-size: 17px; color: #1a73e8; {ICON_FONT}")
         heard_head.addWidget(self.source_language)
         heard_head.addStretch()
         heard_head.addWidget(self.your_language_select)
@@ -977,12 +988,12 @@ class TranslatorWindow(QWidget):
             " border-top-right-radius: 13px; border-bottom-right-radius: 13px; }"
         )
         translated_layout = QVBoxLayout(translated)
-        translated_layout.setContentsMargins(20, 16, 18, 18)
-        translated_layout.setSpacing(16)
+        translated_layout.setContentsMargins(14, 12, 12, 14)
+        translated_layout.setSpacing(10)
         translated_head = QHBoxLayout()
-        self.target_language = QLabel("文")
+        self.target_language = QLabel(fluent_glyph(0xE8C1, "文"))
         self.target_language.setStyleSheet(
-            "font-size: 19px; color: #5b3fd4; font-weight: 700;"
+            f"font-size: 17px; color: #5b3fd4; font-weight: 700; {ICON_FONT}"
         )
         translated_head.addWidget(self.target_language)
         translated_head.addStretch()
@@ -1008,8 +1019,8 @@ class TranslatorWindow(QWidget):
             " border-radius: 13px; }"
         )
         strip = QHBoxLayout(self.duplex_outgoing_caption_panel)
-        strip.setContentsMargins(20, 10, 20, 10)
-        strip.setSpacing(18)
+        strip.setContentsMargins(14, 8, 14, 8)
+        strip.setSpacing(10)
         self.duplex_outgoing_caption_title = QLabel("Meeting tarjimasi")
         self.duplex_outgoing_caption_title.setStyleSheet(
             "font-size: 14px; color: #1b1b1f;"
@@ -1141,7 +1152,7 @@ class TranslatorWindow(QWidget):
             running = self.process is not None
             self.tile_run.set_active(running)
             self.tile_run.set_text("Translating" if running else "Tarjimani boshlash")
-            self.tile_run.icon.setText("■" if running else "▶")
+            self.tile_run.icon.setText(fluent_glyph(0xE71A, "■") if running else fluent_glyph(0xE768, "▶"))
             self.tile_quality.set_active(getattr(self, "quality_mode", False))
 
     @staticmethod
@@ -1295,16 +1306,18 @@ class TranslatorWindow(QWidget):
     def _tray_activated(self, reason) -> None:  # noqa: ANN001
         """Tray belgisi bosilganda nima bo'ladi.
 
-        Windows: belgini bosish asosiy oynani OCHMAYDI — faqat menyuni
-        ko'rsatadi. Asosiy oyna faqat o'rnatishdan keyingi ilk ishga
-        tushishda va menyudagi "Sozlamalar"/"Oynani ko'rsatish" orqali
-        ochiladi (foydalanuvchi talabi). macOS xatti-harakati o'zgarmaydi.
+        Windows (2026-07-30 foydalanuvchi talabi): chap tugma — oyna xuddi
+        Windows'ning tez sozlamalari (Quick Settings) kabi SOAT YONIDAN
+        chiqadi va o'sha burchakka yopishib turadi; yana bosilsa yashirinadi.
+        O'ng tugma — avvalgidek menyu (Qt buni kontekst-menyu orqali o'zi
+        qiladi). macOS xatti-harakati o'zgarmaydi.
         """
         if platform.system() == "Windows":
-            if reason == QSystemTrayIcon.ActivationReason.Trigger and self.tray:
-                # Chap tugma bosilganda ham menyuni kursordan chiqaramiz
-                # (o'ng tugma menyusi bilan bir xil) — oyna chiqmaydi.
-                self.tray.contextMenu().popup(QCursor.pos())
+            if reason == QSystemTrayIcon.ActivationReason.Trigger:
+                if self.isVisible() and not self.isMinimized():
+                    self.hide()
+                else:
+                    self._show_window()
             return
         if reason in (
             QSystemTrayIcon.ActivationReason.Trigger,
@@ -1542,7 +1555,31 @@ class TranslatorWindow(QWidget):
                 3000,
             )
 
+    def _position_near_tray(self) -> None:
+        """Oynani ekranning soat turadigan burchagiga yopishtiradi.
+
+        Tray belgisining geometriyasi olinadi (qaysi ekranda ekanini bilish
+        uchun); topilmasa asosiy ekran. Windows'da vazifa paneli odatda
+        pastda — `availableGeometry` panelni chiqarib beradi, biz esa uning
+        o'ng-pastki burchagiga 12 px chekinish bilan joylashamiz."""
+        screen = None
+        tray = getattr(self, "tray", None)
+        if tray is not None:
+            geometry = tray.geometry()
+            if not geometry.isNull():
+                screen = QApplication.screenAt(geometry.center())
+        if screen is None:
+            screen = self.screen() or QApplication.primaryScreen()
+        if screen is None:
+            return
+        area = screen.availableGeometry()
+        self.move(area.right() - self.width() - 12, area.bottom() - self.height() - 12)
+
     def _show_window(self) -> None:
+        if platform.system() == "Windows":
+            # Har ochilishda soat yonidagi burchakka qaytadi (foydalanuvchi
+            # surib qo'ygan bo'lsa ham) — Quick Settings xatti-harakati.
+            self._position_near_tray()
         self.showNormal()
         self.raise_()
         self.activateWindow()
@@ -2708,8 +2745,8 @@ class TranslatorWindow(QWidget):
             captions["target"] = ""
         self.duplex_outgoing_original_text.setText("Siz: gap kutilmoqda…")
         self.duplex_outgoing_target_text.setText("Tarjima: shu yerda chiqadi…")
-        self.source_language.setText("\U0001F3A4")
-        self.target_language.setText("文")
+        self.source_language.setText(fluent_glyph(0xE720, "\U0001F3A4"))
+        self.target_language.setText(fluent_glyph(0xE8C1, "文"))
         self.source_text.setText("Gap kutilmoqda…")
         self.target_text.setText("Tarjima shu yerda chiqadi…")
 
@@ -2738,7 +2775,7 @@ class TranslatorWindow(QWidget):
         self.duplex_outgoing_caption_panel.setVisible(True)
         self.language_label.setText("Tillar")
         # 530 → 596: «Meeting o'zbekcha» belgisi va navbat ko'rsatkichi.
-        self.setFixedSize(780, 540)
+        self.setFixedSize(430, 560)
         self._sync_meeting_uz_widgets()
         self._reset_captions()
         if apply_devices:
