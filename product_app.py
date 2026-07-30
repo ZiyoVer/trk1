@@ -84,6 +84,7 @@ import sounddevice as sd
 from dotenv import dotenv_values
 from PySide6.QtCore import (
     QObject,
+    QPoint,
     QRectF,
     QProcess,
     QProcessEnvironment,
@@ -207,7 +208,7 @@ CHECKBOX_STYLE = (
     "border: 1px solid #33456080; background: #131e30; } "
     "QCheckBox::indicator:checked { background: #15845a; border-color: #15845a; }"
 )
-APP_VERSION = "0.9.88"
+APP_VERSION = "0.9.89"
 
 
 def _read_channel() -> str:
@@ -1547,6 +1548,27 @@ class TranslatorWindow(QWidget):
                 3000,
             )
 
+    _locked_position = None
+
+    def moveEvent(self, event) -> None:  # noqa: ANN001
+        """QULF: oyna QAYERGA siljitilmasin, burchakka qaytadi.
+
+        0.9.88 da sichqoncha bilan surish olib tashlangan edi, lekin
+        Windows'da oynani klaviatura (Win+strelkalar, Alt+Space → Ko'chirish)
+        va boshqa tizim yo'llari bilan ham siljitish mumkin ekan
+        (foydalanuvchi: "chetdan qimirlatib bo'lmaydigan qilish kerak").
+        Endi har qanday siljishdan keyin oyna o'zi joyiga qaytadi."""
+        super().moveEvent(event)
+        if platform.system() != "Windows":
+            return
+        locked = self._locked_position
+        if locked is None or self.pos() == locked:
+            return
+        # To'g'ridan-to'g'ri move() chaqirsak Windows hali surish rejimida
+        # bo'ladi — keyingi aylanishda qaytaramiz (cheksiz halqa yo'q:
+        # qaytgach pos == locked bo'ladi).
+        QTimer.singleShot(0, lambda: self.move(locked))
+
     def _position_near_tray(self) -> None:
         """Oynani ekranning soat turadigan burchagiga yopishtiradi.
 
@@ -1565,7 +1587,11 @@ class TranslatorWindow(QWidget):
         if screen is None:
             return
         area = screen.availableGeometry()
-        self.move(area.right() - self.width() - 12, area.bottom() - self.height() - 12)
+        target = QPoint(
+            area.right() - self.width() - 12, area.bottom() - self.height() - 12
+        )
+        self._locked_position = target
+        self.move(target)
 
     def _show_window(self) -> None:
         if platform.system() == "Windows":

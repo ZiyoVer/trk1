@@ -968,3 +968,12 @@ Foydalanuvchi talablari (2026-07-30):
 3. **Minus (–) tugmasi olib tashlandi** — yopish (✕) baribir tray'ga
    yashiradi (tarjima ketayotganda), tray belgisi esa ochish/yopishni
    boshqaradi.
+
+## v0.9.89 — Oyna TEMIR qulfda: hech qanday yo'l bilan siljimaydi
+
+0.9.88 sichqoncha bilan surishni olib tashlagan edi, lekin Windows'da
+oynani Win+strelkalar, Alt+Space → «Ko'chirish» va boshqa tizim yo'llari
+bilan baribir siljitish mumkin ekan. Endi `moveEvent` qulfi bor: oyna
+QAYERGA siljitilmasin, keyingi event-aylanishda o'zi soat yonidagi
+burchakka qaytadi (`_locked_position`). Sinovda majburan (50,50) ga
+ko'chirildi — qaytdi. Cheksiz halqa yo'q: qaytgach pos == locked.
