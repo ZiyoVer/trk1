@@ -1071,3 +1071,13 @@ nazarda tutgan ekan («undan ko'ra o'sha burchakka tiqish kerak edida»).
 `_position_near_tray` da 12 px chekinish bor edi; endi 0 — oyna ish
 maydonining o'ng-past burchagiga tegib turadi (`right()`/`bottom()`
 inklyuziv bo'lgani uchun +1). Sinovda: o'ngda 0 px, pastda 0 px.
+
+## v0.9.96 — ✕ yashiradi, qizil chiqish tugmasi, karnay ikoni
+
+Foydalanuvchi talablari:
+1. **✕ endi dasturni yopmaydi** — faqat oynani yashiradi, tarjima va tray
+   ishlab turaveradi (`close.clicked` → `self.hide`).
+2. **Qizil chiqish tugmasi** sozlamalar/yashirish yonida — bosilsa dastur
+   BUTUNLAY yopiladi (`_quit_from_tray`). Uslubi qizil ramka, ustiga
+   olib borilganda to'liq qizil.
+3. **To'lqin yonida karnay ikoni** (Fluent E767).

@@ -198,6 +198,12 @@ HEADER_BUTTON_STYLE = (
     "QPushButton:hover { background: #f2f4f7; } "
     "QPushButton:pressed { background: #e8eaee; }"
 )
+QUIT_BUTTON_STYLE = (
+    "QPushButton { background: #fdeceb; color: #c42b1c; font-size: 12px; padding: 0; "
+    + ICON_FONT + " border: 1px solid #f5c9c5; border-radius: 10px; } "
+    "QPushButton:hover { background: #c42b1c; color: white; border-color: #c42b1c; } "
+    "QPushButton:pressed { background: #a52318; }"
+)
 CLOSE_BUTTON_STYLE = (
     "QPushButton { background: #ffffff; color: #3a3a40; font-size: 12px; padding: 0; " + ICON_FONT + " "
     "border: 1px solid #e4e7ec; border-radius: 10px; } "
@@ -210,7 +216,7 @@ CHECKBOX_STYLE = (
     "border: 1px solid #33456080; background: #131e30; } "
     "QCheckBox::indicator:checked { background: #15845a; border-color: #15845a; }"
 )
-APP_VERSION = "0.9.95"
+APP_VERSION = "0.9.96"
 
 
 def _read_channel() -> str:
@@ -927,12 +933,20 @@ class TranslatorWindow(QWidget):
         settings.setFixedSize(28, 26)
         settings.setStyleSheet(HEADER_BUTTON_STYLE)
         settings.clicked.connect(self.edit_settings)
+        # ✕ — oynani YASHIRADI, dasturni yopmaydi (foydalanuvchi talabi).
+        # Butunlay chiqish uchun yonidagi QIZIL tugma.
         close = QPushButton(fluent_glyph(0xE8BB, "✕"))
-        close.setAccessibleName("Yopish")
-        close.setToolTip("Yopish")
+        close.setAccessibleName("Yashirish")
+        close.setToolTip("Yashirish — dastur ishlab turaveradi")
         close.setFixedSize(28, 26)
-        close.setStyleSheet(CLOSE_BUTTON_STYLE)
-        close.clicked.connect(self.close)
+        close.setStyleSheet(HEADER_BUTTON_STYLE)
+        close.clicked.connect(self.hide)
+        quit_button = QPushButton(fluent_glyph(0xE7E8, "⏻"))
+        quit_button.setAccessibleName("Dasturdan chiqish")
+        quit_button.setToolTip("Dasturdan butunlay chiqish")
+        quit_button.setFixedSize(28, 26)
+        quit_button.setStyleSheet(QUIT_BUTTON_STYLE)
+        quit_button.clicked.connect(self._quit_from_tray)
         header.addWidget(logo)
         header.addWidget(title)
         header.addSpacing(6)
@@ -940,6 +954,7 @@ class TranslatorWindow(QWidget):
         header.addStretch()
         header.addWidget(settings)
         header.addWidget(close)
+        header.addWidget(quit_button)
         layout.addLayout(header)
 
         # ----------------- DRAYVER QATORI -----------------
@@ -1078,7 +1093,10 @@ class TranslatorWindow(QWidget):
         # ko'rinmas idishda qoladi (kod ularga matn yozaveradi).
         self.duplex_outgoing_caption_title = QLabel("", self._hidden_hints)
         self.duplex_outgoing_original_text = QLabel("", self._hidden_hints)
+        wave_icon = QLabel(fluent_glyph(0xE767, "\U0001F50A"))
+        wave_icon.setStyleSheet(f"font-size: 14px; color: #1a73e8; {ICON_FONT}")
         self.wave = Waveform()
+        strip.addWidget(wave_icon)
         strip.addWidget(self.wave, 1)
         layout.addWidget(self.duplex_outgoing_caption_panel)
 
