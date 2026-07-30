@@ -945,3 +945,15 @@ rasmiy premium ikonlardan foydalan».
    macOS (faqat dev muhit) zaxira belgilarga tushadi.
 
 Mantiqqa tegilmadi; 72 test o'tdi.
+
+## v0.9.87 — O'lcham Windows Quick Settings paneliga moslandi
+
+Foydalanuvchi 0.9.86 dagi 430×560 ni ham noto'g'ri dedi: «windows
+panelidek qil, razresheniyasini qidir». Rasmiy hujjatlarda flyout o'lchami
+e'lon qilinmagan; eng ishonchli manba — foydalanuvchining O'Z skrinshoti:
+Quick Settings paneli **383 px** kenglikda edi. Shunga moslandi:
+
+- Oyna **385×480** (edi 430×560).
+- Sarlavha ixchamlashdi (logo 30, sarlavha 14px, tugmalar 28×26).
+- Plitka yozuvi «Tarjimani boshlash» → «Boshlash» (ishlaganda
+  «Translating»), balandligi 46 px.

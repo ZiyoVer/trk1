@@ -207,7 +207,7 @@ CHECKBOX_STYLE = (
     "border: 1px solid #33456080; background: #131e30; } "
     "QCheckBox::indicator:checked { background: #15845a; border-color: #15845a; }"
 )
-APP_VERSION = "0.9.86"
+APP_VERSION = "0.9.87"
 
 
 def _read_channel() -> str:
@@ -326,16 +326,16 @@ class ActionTile(QFrame):
         super().__init__(parent)
         self._accent = accent
         self._active = False
-        self.setFixedHeight(52)
+        self.setFixedHeight(46)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         row = QHBoxLayout(self)
-        row.setContentsMargins(18, 0, 18, 0)
+        row.setContentsMargins(12, 0, 12, 0)
         row.setSpacing(14)
         self.icon = QLabel(glyph)
-        self.icon.setStyleSheet(f"font-size: 16px; background: transparent; {ICON_FONT}")
+        self.icon.setStyleSheet(f"font-size: 14px; background: transparent; {ICON_FONT}")
         self.label = QLabel(text)
         self.label.setStyleSheet(
-            "font-size: 16px; font-weight: 600; background: transparent;"
+            "font-size: 13.5px; font-weight: 600; background: transparent;"
         )
         row.addStretch()
         row.addWidget(self.icon)
@@ -369,10 +369,10 @@ class ActionTile(QFrame):
             )
             colour = "#1b1b1f"
         self.icon.setStyleSheet(
-            f"font-size: 16px; color: {colour}; background: transparent; {ICON_FONT}"
+            f"font-size: 14px; color: {colour}; background: transparent; {ICON_FONT}"
         )
         self.label.setStyleSheet(
-            f"font-size: 16px; font-weight: 600; color: {colour}; background: transparent;"
+            f"font-size: 13.5px; font-weight: 600; color: {colour}; background: transparent;"
         )
 
     def mousePressEvent(self, event) -> None:  # noqa: ANN001
@@ -414,7 +414,7 @@ class OutputPickerDialog(QDialog):
         self.chosen = ""
         layout = QVBoxLayout(self)
         title = QLabel(t("Tarjima ovozini qaysi qurilmadan eshitasiz?"))
-        title.setStyleSheet("font-size: 15px; font-weight: 700; color: #101114;")
+        title.setStyleSheet("font-size: 14px; font-weight: 700; color: #101114;")
         layout.addWidget(title)
         hint = QLabel(
             t(
@@ -671,7 +671,7 @@ class TranslatorWindow(QWidget):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle(APP_NAME)
-        self.setFixedSize(430, 560)
+        self.setFixedSize(385, 480)
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
             | Qt.WindowType.WindowStaysOnTopHint
@@ -862,34 +862,34 @@ class TranslatorWindow(QWidget):
 
         # ----------------- SARLAVHA -----------------
         header = QHBoxLayout()
-        header.setSpacing(12)
+        header.setSpacing(8)
         logo = QLabel(fluent_glyph(0xE767, "‖"))
-        logo.setFixedSize(34, 34)
+        logo.setFixedSize(30, 30)
         logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
         logo.setStyleSheet(
-            "background: #1a73e8; color: white; border-radius: 17px; "
-            f"font-size: 15px; font-weight: 800; {ICON_FONT}"
+            "background: #1a73e8; color: white; border-radius: 15px; "
+            f"font-size: 13px; font-weight: 800; {ICON_FONT}"
         )
         title = QLabel("Live Translator")
-        title.setStyleSheet("font-size: 17px; font-weight: 700; color: #101114;")
+        title.setStyleSheet("font-size: 14px; font-weight: 700; color: #101114;")
         self.status = QLabel("●  Tayyor")
-        self.status.setStyleSheet("color: #0f8b96; font-size: 11.5px; font-weight: 500;")
+        self.status.setStyleSheet("color: #0f8b96; font-size: 10.5px; font-weight: 500;")
         settings = QPushButton(fluent_glyph(0xE713, "⚙"))
         settings.setAccessibleName("Sozlamalar")
         settings.setToolTip("Sozlamalar")
-        settings.setFixedSize(34, 30)
+        settings.setFixedSize(28, 26)
         settings.setStyleSheet(HEADER_BUTTON_STYLE)
         settings.clicked.connect(self.edit_settings)
         minimize = QPushButton(fluent_glyph(0xE921, "–"))
         minimize.setAccessibleName("Kichraytirish")
         minimize.setToolTip("Kichraytirish — menyu panelida qoladi")
-        minimize.setFixedSize(34, 30)
+        minimize.setFixedSize(28, 26)
         minimize.setStyleSheet(HEADER_BUTTON_STYLE)
         minimize.clicked.connect(self._minimize_window)
         close = QPushButton(fluent_glyph(0xE8BB, "✕"))
         close.setAccessibleName("Yopish")
         close.setToolTip("Yopish")
-        close.setFixedSize(34, 30)
+        close.setFixedSize(28, 26)
         close.setStyleSheet(CLOSE_BUTTON_STYLE)
         close.clicked.connect(self.close)
         header.addWidget(logo)
@@ -929,7 +929,7 @@ class TranslatorWindow(QWidget):
         self.quality_check.setChecked(self.quality_mode)
         self.quality_check.toggled.connect(self._toggle_quality)
 
-        self.tile_run = ActionTile(fluent_glyph(0xE768, "▶"), "Tarjimani boshlash", "#0f8b96")
+        self.tile_run = ActionTile(fluent_glyph(0xE768, "▶"), "Boshlash", "#0f8b96")
         self.tile_run.clicked.connect(self._toggle_translation)
         self.tile_quality = ActionTile(fluent_glyph(0xE734, "✦"), "Sifatli tarjima", "#1a73e8")
         self.tile_quality.set_active(self.quality_mode)
@@ -949,7 +949,7 @@ class TranslatorWindow(QWidget):
             self.your_language_select.addItem(language.name, language.code)
             self.meeting_language_select.addItem(language.name, language.code)
         for combo in (self.your_language_select, self.meeting_language_select):
-            combo.setFixedWidth(126)
+            combo.setFixedWidth(116)
             combo.setCursor(Qt.CursorShape.PointingHandCursor)
 
         self.caption_panel = QFrame()
@@ -1151,7 +1151,7 @@ class TranslatorWindow(QWidget):
         with suppress(Exception):
             running = self.process is not None
             self.tile_run.set_active(running)
-            self.tile_run.set_text("Translating" if running else "Tarjimani boshlash")
+            self.tile_run.set_text("Translating" if running else "Boshlash")
             self.tile_run.icon.setText(fluent_glyph(0xE71A, "■") if running else fluent_glyph(0xE768, "▶"))
             self.tile_quality.set_active(getattr(self, "quality_mode", False))
 
@@ -2775,7 +2775,7 @@ class TranslatorWindow(QWidget):
         self.duplex_outgoing_caption_panel.setVisible(True)
         self.language_label.setText("Tillar")
         # 530 → 596: «Meeting o'zbekcha» belgisi va navbat ko'rsatkichi.
-        self.setFixedSize(430, 560)
+        self.setFixedSize(385, 480)
         self._sync_meeting_uz_widgets()
         self._reset_captions()
         if apply_devices:
