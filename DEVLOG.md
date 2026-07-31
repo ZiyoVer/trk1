@@ -1138,3 +1138,25 @@ ATAYLAB qo'yiladi).
 Tray menyusi ixchamlashdi: «Oynani ko'rsatish» (endi belgini bosish
 o'zi ochadi/yashiradi) va «Loglarni ochish» olib tashlandi, yetishmayotgan
 **«Sifatli tarjima»** belgisi qo'shildi.
+
+## v0.9.99 — Tray menyusi butunlay olib tashlandi
+
+Foydalanuvchi: «o'ng tugmani bosganda oq jadval borku, kerak emas —
+Windows'ga ham macOS'ga ham. UI o'zi yetadi».
+
+Menyu tray'ga ULANMAYDI (`setContextMenu(None)`), ya'ni bosilganda hech
+narsa chiqmaydi. Menyu ob'ekti va bandlari KODDA saqlanadi — `_sync_tray`
+va belgilarni almashtirish mantig'i ularga murojaat qiladi, ularni
+o'chirish keraksiz xavf edi.
+
+Menyuda bo'lgan uchta boshqaruv boshqa joydan ochilmay qolardi, shuning
+uchun **sozlamalar sahifasiga** ko'chirildi:
+
+- «Meeting o'zbekcha» belgisi (asosiy oynadagi holat bilan sinxron)
+- «Ovoz qurilmasi…» tugmasi
+- «Loglarni yuborish» tugmasi
+
+Qolganlari allaqachon interfeysda bor edi: Boshlash/To'xtatish va Sifatli
+tarjima — plitkalarda, Sozlamalar — ⚙, Chiqish — qizil tugma.
+
+Tray belgisi endi faqat bitta ish qiladi: bosilsa oynani ochadi/yashiradi.

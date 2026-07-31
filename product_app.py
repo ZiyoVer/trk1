@@ -291,7 +291,7 @@ CHECKBOX_STYLE = (
     "border: 1px solid #33456080; background: #131e30; } "
     "QCheckBox::indicator:checked { background: #15845a; border-color: #15845a; }"
 )
-APP_VERSION = "0.9.98"
+APP_VERSION = "0.9.99"
 
 
 def _read_channel() -> str:
@@ -1330,6 +1330,37 @@ class TranslatorWindow(QWidget):
         self.license_input.setPlaceholderText("LT-XXXXXX-XXXXXX-XXXXXX-XXXXXX")
         field("Litsenziya kaliti", self.license_input)
 
+        # ==== TRAY MENYUSIDAN KO'CHGAN BOSHQARUVLAR ====
+        # Menyu olib tashlangach bu uchtasi boshqa joydan ochilmay qolardi.
+        divider = QLabel("Boshqaruv")
+        divider.setStyleSheet(
+            "color: #5b5b66; font-size: 11.5px; font-weight: 600; margin-top: 4px;"
+        )
+        layout.addWidget(divider)
+
+        self.settings_meeting_uz = QCheckBox("Meeting o‘zbekcha — hammani jonli eshitaman")
+        self.settings_meeting_uz.setStyleSheet("color: #3a3a40; font-size: 12.5px;")
+        self.settings_meeting_uz.setChecked(self.meeting_uz)
+        self.settings_meeting_uz.toggled.connect(self.meeting_uz_check.setChecked)
+        layout.addWidget(self.settings_meeting_uz)
+
+        controls = QHBoxLayout()
+        controls.setSpacing(8)
+        device_button = QPushButton("Ovoz qurilmasi…")
+        device_button.setStyleSheet(
+            "QPushButton { background: #ffffff; color: #3a3a40; border: 1px solid #e4e7ec; "
+            "border-radius: 9px; padding: 6px 12px; font-weight: 600; } "
+            "QPushButton:hover { background: #f2f4f7; }"
+        )
+        device_button.clicked.connect(lambda: self.ask_output_device(True))
+        logs_button = QPushButton("Loglarni yuborish")
+        logs_button.setStyleSheet(device_button.styleSheet())
+        logs_button.clicked.connect(self.send_logs_to_support)
+        controls.addWidget(device_button)
+        controls.addWidget(logs_button)
+        controls.addStretch()
+        layout.addLayout(controls)
+
         self.settings_hint = QLabel(
             "Maxfiy qiymatlar faqat tizim Credential Manager ichida saqlanadi."
         )
@@ -1513,7 +1544,12 @@ class TranslatorWindow(QWidget):
         tray_version_action = menu.addAction(f"{APP_NAME} {APP_VERSION} · {APP_EDITION}")
         tray_version_action.setEnabled(False)
         self.tray_menu = menu
-        self.tray.setContextMenu(menu)
+        # MENYU EKRANGA CHIQMAYDI (2026-07-31 foydalanuvchi talabi:
+        # "o'ng tugmani bosganda oq jadval kerak emas, UI o'zi yetadi").
+        # Ob'ektlar saqlanadi — `_sync_tray` va belgilarni almashtirish
+        # kodi ularga murojaat qiladi; faqat tray'ga ulanmaydi, ya'ni
+        # o'ng tugma bosilganda hech narsa chiqmaydi.
+        self.tray.setContextMenu(None)
         self.tray.activated.connect(self._tray_activated)
         self.tray.show()
 
@@ -1782,6 +1818,7 @@ class TranslatorWindow(QWidget):
         for widget in (
             getattr(self, "meeting_uz_check", None),
             getattr(self, "tray_meeting_uz_action", None),
+            getattr(self, "settings_meeting_uz", None),
         ):
             if widget is None:
                 continue
