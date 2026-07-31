@@ -190,6 +190,25 @@ APP_NAME = "Live Translator"
 ICON_FONT = "font-family: 'Segoe Fluent Icons', 'Segoe MDL2 Assets';"
 
 
+def fresh_output_index(name: str, fallback: int) -> int:
+    """Qurilmaning HOZIRGI indeksini nom bo'yicha topadi.
+
+    Jonli nosozlik (2026-07-31): drayver o'rnatilgach ro'yxatga yangi
+    qurilmalar qo'shiladi va PortAudio indekslari SURILADI — combo'dagi
+    eski raqam endi boshqa qurilmaga (masalan Hi-Fi Cable'ga) tegishli
+    bo'lib qoladi. Foydalanuvchi karnayni tanlab «Sinov» bosadi, ovoz esa
+    kabelga ketadi va hech narsa eshitilmaydi."""
+    if not name:
+        return fallback
+    try:
+        found = auto_output_device(name).index
+    except Exception:
+        return fallback
+    if found != fallback:
+        print(f"[SINOV] indeks eskirgan edi: {fallback} -> {found} ({name!r})", flush=True)
+    return found
+
+
 def drawn_icon(kind: str, size: int = 17, colour: str = "#1a73e8") -> QPixmap:
     """Shrift talab qilmaydigan CHIZILGAN ikon.
 
@@ -272,7 +291,7 @@ CHECKBOX_STYLE = (
     "border: 1px solid #33456080; background: #131e30; } "
     "QCheckBox::indicator:checked { background: #15845a; border-color: #15845a; }"
 )
-APP_VERSION = "0.9.97"
+APP_VERSION = "0.9.98"
 
 
 def _read_channel() -> str:
@@ -293,7 +312,12 @@ def _read_channel() -> str:
 
 
 APP_CHANNEL = _read_channel()
-APP_EDITION = "Windows OPS" if APP_CHANNEL == "ops" else "Windows"
+if platform.system() == "Darwin":
+    APP_EDITION = "macOS"
+elif APP_CHANNEL == "ops":
+    APP_EDITION = "Windows OPS"
+else:
+    APP_EDITION = "Windows"
 
 # Yordam serveri (Railway): loglarni yuborish va yangilanishni tekshirish.
 # Yuklash tokeni ilova ichida bo'lishi SHART (foydalanuvchi bilmaydi) —
@@ -548,6 +572,11 @@ class OutputPickerDialog(QDialog):
         index = self.combo.currentData()
         if index is None:
             return
+        index = fresh_output_index(
+            str(self.combo.itemData(self.combo.currentIndex(), Qt.ItemDataRole.UserRole + 1)
+                or self.combo.currentText()),
+            int(index),
+        )
         try:
             import numpy as np
             import sounddevice as sd
@@ -1373,6 +1402,11 @@ class TranslatorWindow(QWidget):
             self.tile_run.set_text("Translating" if running else "Boshlash")
             self.tile_run.icon.setText(fluent_glyph(0xE71A, "■") if running else fluent_glyph(0xE768, "▶"))
             self.tile_quality.set_active(getattr(self, "quality_mode", False))
+            action = getattr(self, "tray_quality_action", None)
+            if action is not None and action.isChecked() != self.quality_mode:
+                action.blockSignals(True)
+                action.setChecked(self.quality_mode)
+                action.blockSignals(False)
 
     @staticmethod
     def _tray_pixmap(size: int = 22, running: bool = False) -> QIcon:
@@ -1423,49 +1457,42 @@ class TranslatorWindow(QWidget):
         self.tray.setIcon(self._tray_pixmap())
         self.tray.setToolTip(APP_NAME)
         menu = QMenu()
+        # ==== IXCHAM MENYU (2026-07-31) ====
+        # Eski menyuda yangi dizaynda keraksiz bo'lib qolgan bandlar bor edi
+        # («Oynani ko'rsatish» — endi belgini bosishning o'zi ochadi/yopadi;
+        # «Loglarni ochish» — yuborish tugmasi yetarli), «Sifatli tarjima»
+        # esa umuman yo'q edi.
         self.tray_status_action = menu.addAction(t("Tayyor"))
         self.tray_status_action.setEnabled(False)
         menu.addSeparator()
-        # Ilova faqat ikki tomonlama — tray'dan rejim va eski til menyulari
-        # olib tashlandi (til asosiy oynadagi sodda panelda). Mavjud kod bilan
-        # mos bo'lishi uchun ro'yxatlar bo'sh qoldiriladi.
+        # Mavjud kod bilan mosligi uchun bo'sh ro'yxatlar saqlanadi.
         self.tray_mode_actions: list[QAction] = []
         self.tray_source_actions: list[QAction] = []
         self.tray_target_actions: list[QAction] = []
-        # ASOSIY boshqaruv eng tepada: tray belgisidan boshlash/to'xtatish.
         self.tray_start_action = menu.addAction(t("Tarjimani boshlash"))
-        # DIQQAT: tray'dan Start HAR DOIM ishlashi kerak — oyna yashirin
-        # bo'lganda ham. Shuning uchun bevosita start_translator (u o'zi
-        # qurilmalarni tekshiradi va kerak bo'lsa ro'yxatni yangilaydi).
         self.tray_start_action.triggered.connect(self.start_translator)
         self.tray_stop_action = menu.addAction(t("Tarjimani to‘xtatish"))
         self.tray_stop_action.triggered.connect(self.stop_translator)
         menu.addSeparator()
-        # "Oynani ko'rsatish" O'RTADA turadi. Ilgari u eng tepadagi BOSILADIGAN
-        # band edi: o'ng tugma bosilganda menyu kursor tagida ochilib, sichqoncha
-        # qo'yib yuborilishi o'sha bandni bosib yuborardi — oyna "o'z-o'zidan"
-        # ochilardi (foydalanuvchi shikoyati). Menyuning yuqori va quyi chekkasi
-        # endi BOSILMAYDIGAN bandlar (holat va versiya) bilan himoyalangan.
-        top_show_action = menu.addAction(t("Oynani ko‘rsatish"))
-        top_show_action.triggered.connect(self._show_window)
-        menu.addSeparator()
-        # Oynani ochmasdan almashtirish uchun (foydalanuvchi ko'pincha
-        # tray'dan boshqaradi). Oynadagi belgi bilan bir xil holatda turadi.
+
         self.tray_meeting_uz_action = menu.addAction("Meeting o‘zbekcha")
         self.tray_meeting_uz_action.setCheckable(True)
         self.tray_meeting_uz_action.setChecked(getattr(self, "meeting_uz", False))
         self.tray_meeting_uz_action.toggled.connect(self._toggle_meeting_uz)
-        menu.addSeparator()
-        # Sodda tray (foydalanuvchi talabi): monitor ("o‘zim ham eshitay"),
-        # log yig‘ish (ZIP), mikrofon/karnay tiklash — olib tashlandi.
-        open_logs_action = menu.addAction(t("Loglarni ochish"))
-        open_logs_action.triggered.connect(self._open_logs_folder)
-        send_logs_action = menu.addAction(t("Loglarni yuborish (yordam uchun)"))
-        send_logs_action.triggered.connect(self.send_logs_to_support)
+        self.tray_quality_action = menu.addAction("Sifatli tarjima")
+        self.tray_quality_action.setCheckable(True)
+        self.tray_quality_action.setChecked(getattr(self, "quality_mode", False))
+        self.tray_quality_action.toggled.connect(
+            lambda checked: self.quality_check.setChecked(checked)
+        )
         pick_output_action = menu.addAction(t("Ovoz qurilmasini tanlash…"))
         pick_output_action.triggered.connect(lambda: self.ask_output_device(True))
         menu.addSeparator()
-        # Interfeys tili — avtomatik aniqlanadi, shu yerdan o'zgartiriladi.
+
+        settings_action = menu.addAction(t("Sozlamalar…"))
+        settings_action.triggered.connect(self._tray_open_settings)
+        send_logs_action = menu.addAction(t("Loglarni yuborish"))
+        send_logs_action.triggered.connect(self.send_logs_to_support)
         self.tray_ui_lang_menu = menu.addMenu(t("Interfeys tili"))
         ui_lang_group = QActionGroup(self)
         ui_lang_group.setExclusive(True)
@@ -1479,13 +1506,9 @@ class TranslatorWindow(QWidget):
                 lambda _checked=False, c=code: self._change_ui_language(c)
             )
             self.tray_ui_lang_actions.append(action)
-        settings_action = menu.addAction(t("Sozlamalar…"))
-        settings_action.triggered.connect(self._tray_open_settings)
+        menu.addSeparator()
         quit_action = menu.addAction(t("Chiqish"))
         quit_action.triggered.connect(self._quit_from_tray)
-        # Quyi chekka himoyasi: menyu YUQORIGA ochilganda (tepshoq pastda
-        # bo'lsa — odatiy hol) kursor oxirgi band ustida qoladi. Bosilmaydigan
-        # versiya yozuvi tasodifan "Chiqish"ni bosib yuborishning oldini oladi.
         menu.addSeparator()
         tray_version_action = menu.addAction(f"{APP_NAME} {APP_VERSION} · {APP_EDITION}")
         tray_version_action.setEnabled(False)
@@ -2919,15 +2942,35 @@ class TranslatorWindow(QWidget):
         yozardi (soxta ogohlantirish)."""
         return self._win_audio("restorerender")
 
+    def _watch_default_after_driver(self) -> None:
+        """Drayver o'rnatilgach ovoz kabelga o'tib ketmasin (3 daqiqa kuzatuv)."""
+        for _ in range(36):
+            time.sleep(5)
+            if self.process is not None:
+                return  # tarjima boshlandi — kabel ATAYLAB qo'yilgan
+            current = self._current_default_output()
+            if not current or not is_virtual_device(current):
+                continue
+            with self._routing_lock:
+                out = self._win_audio("restorerender")
+            print(
+                f"[DRAYVER] ovoz kabelga o'tib ketgandi ({current!r}) — "
+                f"qaytarildi: {out.strip()!r}",
+                flush=True,
+            )
+
     def _driver_installer_ready(self, path: str) -> None:
         self.driver_button.setEnabled(True)
         self.driver_button.setText("AUDIO DRIVER O‘RNATISH")
         if path:
             QDesktopServices.openUrl(QUrl.fromLocalFile(path))
-        # Windows: drayver o'zini default karnay qilib qo'ygan bo'lishi
-        # mumkin — fizik karnayga qaytaramiz (ovoz eshitilmay qolmasin).
+        # Windows: drayver o'zini default karnay qilib qo'yadi. ILGARI bu
+        # yerda BIR MARTA tiklash chaqirilardi — lekin u o'rnatuvchi
+        # OCHILGAN paytda ishlaydi, drayver esa o'zini default qilib
+        # KEYINROQ (o'rnatish tugagach) qo'yadi. Natijada ovoz Hi-Fi
+        # Cable'da qolib ketardi. Endi bir necha daqiqa kuzatib turamiz.
         if platform.system() == "Windows":
-            self.restore_windows_default_speaker()
+            threading.Thread(target=self._watch_default_after_driver, daemon=True).start()
         if platform.system() == "Darwin":
             variant = "BlackHole 16ch" if "16ch" in Path(path).name else "BlackHole 2ch"
             instructions = (
@@ -4491,7 +4534,10 @@ class TranslatorWindow(QWidget):
             fade = np.linspace(0.0, 1.0, 400, dtype=np.float32)
             tone[: len(fade)] *= fade
             tone[-len(fade) :] *= fade[::-1]
-            sd.play(tone, samplerate=rate, device=int(index), blocking=False)
+            sd.play(
+                tone, samplerate=rate,
+                device=fresh_output_index(name, int(index)), blocking=False,
+            )
             self.route_hint.setText(
                 f"🔈 Sinov ovozi «{name}» qurilmasiga yuborildi. Eshitilmasa — "
                 "ro‘yxatdan boshqa qurilmani tanlab, yana bosing."

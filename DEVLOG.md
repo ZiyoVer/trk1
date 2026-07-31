@@ -1101,3 +1101,40 @@ hammasini».
    bo'lsa ham ichidagi ilova o'zini 0.5.0 deb ko'rsatardi va yangilanish
    tekshiruvi noto'g'ri ishlardi. Endi versiya `product_app.py` dan
    o'qiladi.
+
+## v0.9.98 — Sinov ovozi noto'g'ri qurilmaga ketardi + drayverdan keyingi tiklash
+
+Foydalanuvchi: «drayver o'rnatilgandan keyin darrov dinamik physical
+audiosi hi-fi cable'ga o'tib qolyapti… dinamikni tanlab sinov bossam
+ovoz chiqmayapti, mantiqan zid-ku».
+
+### 1. Sinov ovozi — ESKIRGAN INDEKS (ildiz sabab)
+
+Sinov ovozi qurilmaning **PortAudio indeksi** bo'yicha yuborilardi.
+Drayver o'rnatilgach ro'yxatga yangi qurilmalar qo'shiladi va indekslar
+**suriladi** — combo'dagi eski raqam endi Hi-Fi Cable'ga tegishli bo'lib
+qoladi. Foydalanuvchi karnayni tanlaydi, ovoz esa kabelga ketadi. Tashqi
+ko'rinishi mantiqsiz: «karnayni tanladim, ovoz yo'q».
+
+Endi `fresh_output_index()` qurilmani **NOM bo'yicha** qayta topadi (ikkala
+sinov joyida ham: asosiy oyna va tanlash oynasi) va indeks eskirgan bo'lsa
+logga yozadi.
+
+### 2. Drayverdan keyin ovoz kabelda qolib ketardi
+
+Ilgari `restore_windows_default_speaker()` BIR MARTA — o'rnatuvchi
+OCHILGAN paytda chaqirilardi. Drayver esa o'zini default qilib
+KEYINROQ, o'rnatish tugagach qo'yadi. Logda buni ko'rish mumkin edi:
+`restorerender` OK qaytargan, lekin bu o'rnatishdan oldin bo'lgan.
+
+Endi `_watch_default_after_driver` fon oqimida 3 daqiqa (har 5 s)
+kuzatadi: default chiqish virtual kabelga o'tib ketgan bo'lsa fizik
+qurilmaga qaytaradi. Tarjima boshlansa kuzatuv to'xtaydi (u yerda kabel
+ATAYLAB qo'yiladi).
+
+### 3. macOS: edition va tray menyusi
+
+`APP_EDITION` macOS'da «macOS» deb ko'rsatadi (ilgari «Windows» edi).
+Tray menyusi ixchamlashdi: «Oynani ko'rsatish» (endi belgini bosish
+o'zi ochadi/yashiradi) va «Loglarni ochish» olib tashlandi, yetishmayotgan
+**«Sifatli tarjima»** belgisi qo'shildi.
