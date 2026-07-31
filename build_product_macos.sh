@@ -3,7 +3,11 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT"
-APP_VERSION="${APP_VERSION:-0.5.0}"
+# Versiya product_app.py dan O'QILADI. Ilgari bu yerda 0.5.0 qattiq
+# yozilgan edi: pkg fayl nomi 0.9.x bo'lsa ham ICHIDAGI ilova o'zini 0.5.0
+# deb ko'rsatardi va yangilanish tekshiruvi ham noto'g'ri ishlardi.
+DETECTED_VERSION="$(sed -n 's/^APP_VERSION = "\(.*\)"/\1/p' product_app.py | head -1)"
+APP_VERSION="${APP_VERSION:-${DETECTED_VERSION:-0.0.0}}"
 PKG_NAME="LiveTranslator-${APP_VERSION}-macOS-arm64.pkg"
 CONTROL_URL="${LIVE_TRANSLATOR_CONTROL_URL:-}"
 APP_SIGN_IDENTITY="${MACOS_APP_SIGN_IDENTITY:--}"

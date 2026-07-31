@@ -1081,3 +1081,23 @@ Foydalanuvchi talablari:
    BUTUNLAY yopiladi (`_quit_from_tray`). Uslubi qizil ramka, ustiga
    olib borilganda to'liq qizil.
 3. **To'lqin yonida karnay ikoni** (Fluent E767).
+
+## v0.9.97 — macOS ham Windows kabi ishlaydi va ko'rinadi
+
+Foydalanuvchi: «macni boshlaymiz, xuddi windowsdek qilib dizaynni
+hammasini».
+
+1. **CHIZILGAN IKONLAR** (`drawn_icon`) — macOS'da Segoe Fluent Icons
+   yo'q va zaxira sifatida RANGLI EMOJI (🎤, 🔊) ishlatilardi, u
+   interfeysga umuman mos kelmasdi. Endi mikrofon, karnay va tarjima
+   belgilari QPainter bilan chiziladi: shrift talab qilmaydi, ikkala
+   tizimda bir xil va monoxrom. Retina uchun 3× chizilib kichraytiriladi.
+2. **Flyout xatti-harakati macOS'da ham**: tray belgisi bosilsa oyna
+   ochiladi/yashiriladi; oyna menyu paneli TAGIGA, tepa-o'ng burchakka
+   yopishadi (Windows'da past-o'ng) va tray belgisining x koordinatasiga
+   moslanadi; siljitib bo'lmaydi (`moveEvent` qulfi endi ikkala tizimda).
+3. **macOS build versiyasi tuzatildi** — `build_product_macos.sh` da
+   `APP_VERSION` 0.5.0 deb QATTIQ yozilgan edi: pkg fayl nomi 0.9.x
+   bo'lsa ham ichidagi ilova o'zini 0.5.0 deb ko'rsatardi va yangilanish
+   tekshiruvi noto'g'ri ishlardi. Endi versiya `product_app.py` dan
+   o'qiladi.

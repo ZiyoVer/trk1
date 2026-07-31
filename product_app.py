@@ -85,6 +85,7 @@ import sounddevice as sd
 from dotenv import dotenv_values
 from PySide6.QtCore import (
     QObject,
+    QPointF,
     QPoint,
     QRectF,
     QProcess,
@@ -98,6 +99,8 @@ from PySide6.QtCore import (
 )
 from PySide6.QtGui import (
     QAction,
+    QPainterPath,
+    QPen,
     QPainter,
     QActionGroup,
     QColor,
@@ -187,6 +190,59 @@ APP_NAME = "Live Translator"
 ICON_FONT = "font-family: 'Segoe Fluent Icons', 'Segoe MDL2 Assets';"
 
 
+def drawn_icon(kind: str, size: int = 17, colour: str = "#1a73e8") -> QPixmap:
+    """Shrift talab qilmaydigan CHIZILGAN ikon.
+
+    macOS'da Segoe Fluent Icons yo'q, zaxira sifatida rangli emoji
+    ishlatilardi (🎤, 🔊) — u interfeysga umuman mos kelmasdi. Bu yerdagi
+    ikonlar QPainter bilan chiziladi, ya'ni har ikkala tizimda bir xil va
+    monoxrom ko'rinadi."""
+    scale = 3  # Retina uchun katta chizib, keyin kichraytiramiz
+    box = size * scale
+    pixmap = QPixmap(box, box)
+    pixmap.fill(Qt.transparent)
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    pen = QPen(QColor(colour))
+    pen.setWidthF(box * 0.085)
+    pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+    pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+    painter.setPen(pen)
+    painter.setBrush(Qt.NoBrush)
+    u = box / 100.0  # foizli koordinata
+
+    if kind == "mic":
+        painter.drawRoundedRect(QRectF(38 * u, 12 * u, 24 * u, 44 * u), 12 * u, 12 * u)
+        painter.drawArc(QRectF(26 * u, 34 * u, 48 * u, 42 * u), 180 * 16, 180 * 16)
+        painter.drawLine(QPointF(50 * u, 76 * u), QPointF(50 * u, 88 * u))
+    elif kind == "speaker":
+        path = QPainterPath()
+        path.moveTo(20 * u, 40 * u)
+        path.lineTo(34 * u, 40 * u)
+        path.lineTo(52 * u, 22 * u)
+        path.lineTo(52 * u, 78 * u)
+        path.lineTo(34 * u, 60 * u)
+        path.lineTo(20 * u, 60 * u)
+        path.closeSubpath()
+        painter.drawPath(path)
+        painter.drawArc(QRectF(58 * u, 34 * u, 20 * u, 32 * u), -70 * 16, 140 * 16)
+        painter.drawArc(QRectF(64 * u, 24 * u, 30 * u, 52 * u), -70 * 16, 140 * 16)
+    elif kind == "translate":
+        painter.drawLine(QPointF(16 * u, 26 * u), QPointF(46 * u, 26 * u))
+        painter.drawLine(QPointF(31 * u, 26 * u), QPointF(31 * u, 18 * u))
+        painter.drawLine(QPointF(22 * u, 26 * u), QPointF(40 * u, 52 * u))
+        painter.drawLine(QPointF(40 * u, 26 * u), QPointF(20 * u, 54 * u))
+        painter.drawLine(QPointF(54 * u, 84 * u), QPointF(70 * u, 46 * u))
+        painter.drawLine(QPointF(70 * u, 46 * u), QPointF(86 * u, 84 * u))
+        painter.drawLine(QPointF(60 * u, 70 * u), QPointF(80 * u, 70 * u))
+    painter.end()
+    return pixmap.scaled(
+        size, size,
+        Qt.AspectRatioMode.KeepAspectRatio,
+        Qt.TransformationMode.SmoothTransformation,
+    )
+
+
 def fluent_glyph(code: int, fallback: str) -> str:
     """Windows'da rasmiy Fluent belgisi, boshqa tizimda zaxira matn."""
     return chr(code) if platform.system() == "Windows" else fallback
@@ -216,7 +272,7 @@ CHECKBOX_STYLE = (
     "border: 1px solid #33456080; background: #131e30; } "
     "QCheckBox::indicator:checked { background: #15845a; border-color: #15845a; }"
 )
-APP_VERSION = "0.9.96"
+APP_VERSION = "0.9.97"
 
 
 def _read_channel() -> str:
@@ -916,13 +972,11 @@ class TranslatorWindow(QWidget):
         # ----------------- SARLAVHA -----------------
         header = QHBoxLayout()
         header.setSpacing(8)
-        logo = QLabel(fluent_glyph(0xE767, "‖"))
+        logo = QLabel()
         logo.setFixedSize(30, 30)
         logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        logo.setStyleSheet(
-            "background: #1a73e8; color: white; border-radius: 15px; "
-            f"font-size: 13px; font-weight: 800; {ICON_FONT}"
-        )
+        logo.setPixmap(drawn_icon("speaker", 16, "#ffffff"))
+        logo.setStyleSheet("background: #1a73e8; border-radius: 15px;")
         title = QLabel("Live Translator")
         title.setStyleSheet("font-size: 14px; font-weight: 700; color: #101114;")
         self.status = QLabel("●  Tayyor")
@@ -1026,8 +1080,8 @@ class TranslatorWindow(QWidget):
         # turardi, lekin dvigatel matni («Meeting · UZ») aynan shu widgetga
         # yoziladi — natijada tarjima paytida ikon o'rnida «Meeting Meeting»
         # yozuvi chiqib qolardi (2026-07-30 jonli nosozlik).
-        self._mic_icon = QLabel(fluent_glyph(0xE720, "\U0001F3A4"))
-        self._mic_icon.setStyleSheet(f"font-size: 17px; color: #1a73e8; {ICON_FONT}")
+        self._mic_icon = QLabel()
+        self._mic_icon.setPixmap(drawn_icon("mic", 17, "#1a73e8"))
         heard_head.addWidget(self._mic_icon)
         heard_head.addStretch()
         heard_head.addWidget(self.your_language_select)
@@ -1055,10 +1109,8 @@ class TranslatorWindow(QWidget):
         translated_layout.setContentsMargins(12, 10, 10, 12)
         translated_layout.setSpacing(10)
         translated_head = QHBoxLayout()
-        self._translate_icon = QLabel(fluent_glyph(0xE8C1, "文"))
-        self._translate_icon.setStyleSheet(
-            f"font-size: 17px; color: #5b3fd4; font-weight: 700; {ICON_FONT}"
-        )
+        self._translate_icon = QLabel()
+        self._translate_icon.setPixmap(drawn_icon("translate", 17, "#5b3fd4"))
         translated_head.addWidget(self._translate_icon)
         translated_head.addStretch()
         translated_head.addWidget(self.meeting_language_select)
@@ -1093,8 +1145,8 @@ class TranslatorWindow(QWidget):
         # ko'rinmas idishda qoladi (kod ularga matn yozaveradi).
         self.duplex_outgoing_caption_title = QLabel("", self._hidden_hints)
         self.duplex_outgoing_original_text = QLabel("", self._hidden_hints)
-        wave_icon = QLabel(fluent_glyph(0xE767, "\U0001F50A"))
-        wave_icon.setStyleSheet(f"font-size: 14px; color: #1a73e8; {ICON_FONT}")
+        wave_icon = QLabel()
+        wave_icon.setPixmap(drawn_icon("speaker", 15, "#1a73e8"))
         self.wave = Waveform()
         strip.addWidget(wave_icon)
         strip.addWidget(self.wave, 1)
@@ -1487,18 +1539,14 @@ class TranslatorWindow(QWidget):
         O'ng tugma — avvalgidek menyu (Qt buni kontekst-menyu orqali o'zi
         qiladi). macOS xatti-harakati o'zgarmaydi.
         """
-        if platform.system() == "Windows":
-            if reason == QSystemTrayIcon.ActivationReason.Trigger:
-                if self.isVisible() and not self.isMinimized():
-                    self.hide()
-                else:
-                    self._show_window()
-            return
         if reason in (
             QSystemTrayIcon.ActivationReason.Trigger,
             QSystemTrayIcon.ActivationReason.DoubleClick,
-        ) and not self.isVisible():
-            self._show_window()
+        ):
+            if self.isVisible() and not self.isMinimized():
+                self.hide()
+            else:
+                self._show_window()
 
     def _tray_mode_selected(self, index: int) -> None:
         if self.process is not None:
@@ -1741,8 +1789,6 @@ class TranslatorWindow(QWidget):
         (foydalanuvchi: "chetdan qimirlatib bo'lmaydigan qilish kerak").
         Endi har qanday siljishdan keyin oyna o'zi joyiga qaytadi."""
         super().moveEvent(event)
-        if platform.system() != "Windows":
-            return
         locked = self._locked_position
         if locked is None or self.pos() == locked:
             return
@@ -1769,6 +1815,19 @@ class TranslatorWindow(QWidget):
         if screen is None:
             return
         area = screen.availableGeometry()
+        if platform.system() == "Darwin":
+            # macOS: menyu paneli TEPADA — oyna tepa-o'ng burchakka, tray
+            # belgisining tagiga tushadi (Windows'da esa past-o'ngga).
+            x = area.right() - self.width() + 1
+            tray = getattr(self, "tray", None)
+            if tray is not None:
+                geometry = tray.geometry()
+                if not geometry.isNull():
+                    x = min(x, max(area.left(), geometry.center().x() - self.width() // 2))
+            target = QPoint(x, area.top())
+            self._locked_position = target
+            self.move(target)
+            return
         # BURCHAKKA TIQILADI: oyna bilan ekran cheti orasida bo'shliq
         # QOLMAYDI (foydalanuvchi: "o'sha burchakka tiqish kerak edi").
         # `right()`/`bottom()` inklyuziv, shuning uchun +1.
@@ -1779,10 +1838,9 @@ class TranslatorWindow(QWidget):
         self.move(target)
 
     def _show_window(self) -> None:
-        if platform.system() == "Windows":
-            # Har ochilishda soat yonidagi burchakka qaytadi (foydalanuvchi
-            # surib qo'ygan bo'lsa ham) — Quick Settings xatti-harakati.
-            self._position_near_tray()
+        # Har ochilishda tray belgisi yonidagi burchakka qaytadi (ikkala
+        # tizimda ham) — tizim paneli xatti-harakati.
+        self._position_near_tray()
         self.showNormal()
         self.raise_()
         self.activateWindow()
@@ -4715,8 +4773,7 @@ class TranslatorWindow(QWidget):
     # qaytaradi.
 
     def showEvent(self, event) -> None:  # noqa: ANN001
-        if platform.system() == "Windows":
-            self._position_near_tray()
+        self._position_near_tray()
         super().showEvent(event)
 
     def closeEvent(self, event) -> None:  # noqa: ANN001
