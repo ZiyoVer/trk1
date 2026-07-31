@@ -1160,3 +1160,44 @@ Qolganlari allaqachon interfeysda bor edi: Boshlash/To'xtatish va Sifatli
 tarjima — plitkalarda, Sozlamalar — ⚙, Chiqish — qizil tugma.
 
 Tray belgisi endi faqat bitta ish qiladi: bosilsa oynani ochadi/yashiradi.
+
+## v1.0.0 — JIDDIY: oyna qulfi cheksiz halqaga tushib, dastur qotardi
+
+Foydalanuvchi: «qotib qoldi windowsda va ikkinchi audio qurilmasi
+topilmadi deyapti».
+
+### Ildiz sabab (mening 0.9.89 dagi xatoyim)
+
+`moveEvent` qulfi oynani burchakda ushlab turardi:
+
+```python
+if locked is None or self.pos() == locked:
+    return
+QTimer.singleShot(0, lambda: self.move(locked))
+```
+
+Izohda «cheksiz halqa yo'q: qaytgach pos == locked bo'ladi» deb yozganman
+— bu **noto'g'ri taxmin** edi. Windows'da DPI masshtabi (125%/150%)
+tufayli `move(locked)` dan keyin haqiqiy koordinata so'ralganidan
+bir-ikki piksel farq qiladi, ya'ni shart HECH QACHON rost bo'lmaydi.
+Natijada `singleShot(0)` → `move` → `moveEvent` → `singleShot(0)` …
+to'liq tezlikda aylanadi va **GUI oqimi to'lib qoladi** — dastur qotadi.
+
+«Ikkinchi audio qurilma topilmadi» ham shu sababdan: drayver skani fon
+oqimida tugaydi, lekin natijani qayta ishlaydigan GUI oqimi band, shuning
+uchun eski/bo'sh holat ekranda qolib ketadi.
+
+macOS'da sezilmadi — u yerda koordinatalar butun sonda qaytadi.
+
+### Tuzatish
+
+Qulf BUTUNLAY olib tashlandi. U ortiqcha ham edi: sichqoncha bilan surish
+0.9.88 da o'chirilgan, oyna esa har ko'rsatilganda `showEvent` orqali
+burchakka qaytadi. Sinovda: majburan siljitilgach halqa bo'lmadi.
+
+### SABOQ
+
+«Holat tiklandimi» degan tekshiruv **aniq tenglikka** tayanmasin —
+platforma qiymatni yaxlitlashi mumkin. Bunday o'z-o'zini tuzatuvchi
+halqalarda: (a) tolerantlik qo'ying, (b) urinishlar sonini cheklang,
+yoki (c) umuman qilmang.

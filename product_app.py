@@ -291,7 +291,7 @@ CHECKBOX_STYLE = (
     "border: 1px solid #33456080; background: #131e30; } "
     "QCheckBox::indicator:checked { background: #15845a; border-color: #15845a; }"
 )
-APP_VERSION = "0.9.99"
+APP_VERSION = "1.0.0"
 
 
 def _read_channel() -> str:
@@ -1840,22 +1840,22 @@ class TranslatorWindow(QWidget):
 
     _locked_position = None
 
-    def moveEvent(self, event) -> None:  # noqa: ANN001
-        """QULF: oyna QAYERGA siljitilmasin, burchakka qaytadi.
-
-        0.9.88 da sichqoncha bilan surish olib tashlangan edi, lekin
-        Windows'da oynani klaviatura (Win+strelkalar, Alt+Space → Ko'chirish)
-        va boshqa tizim yo'llari bilan ham siljitish mumkin ekan
-        (foydalanuvchi: "chetdan qimirlatib bo'lmaydigan qilish kerak").
-        Endi har qanday siljishdan keyin oyna o'zi joyiga qaytadi."""
-        super().moveEvent(event)
-        locked = self._locked_position
-        if locked is None or self.pos() == locked:
-            return
-        # To'g'ridan-to'g'ri move() chaqirsak Windows hali surish rejimida
-        # bo'ladi — keyingi aylanishda qaytaramiz (cheksiz halqa yo'q:
-        # qaytgach pos == locked bo'ladi).
-        QTimer.singleShot(0, lambda: self.move(locked))
+    # ==================================================================
+    # `moveEvent` QULFI OLIB TASHLANDI (jonli nosozlik 2026-07-31).
+    #
+    # U har siljishdan keyin oynani burchakka qaytarardi va shartida
+    # `self.pos() == locked` tekshiruvi bor edi. Windows'da DPI masshtabi
+    # (125%/150%) tufayli `move(locked)` dan keyin haqiqiy koordinata
+    # so'ralganidan bir-ikki piksel farq qiladi — ya'ni shart HECH QACHON
+    # rost bo'lmaydi va `QTimer.singleShot(0, move)` cheksiz halqaga
+    # tushadi. GUI oqimi to'lib, dastur QOTADI (foydalanuvchi: "qotib
+    # qoldi windowsda"), ayni paytda drayver skani natijasi ham qayta
+    # ishlanmay "ikkinchi audio qurilma topilmadi" ko'rinardi.
+    #
+    # Qulf ortiqcha ham edi: sichqoncha bilan surish 0.9.88 da butunlay
+    # o'chirilgan, oyna esa har ko'rsatilganda `showEvent` orqali
+    # burchakka qaytadi.
+    # ==================================================================
 
     def _position_near_tray(self) -> None:
         """Oynani ekranning soat turadigan burchagiga yopishtiradi.
